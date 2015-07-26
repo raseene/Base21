@@ -63,6 +63,7 @@ void	init_app(void)
 	phase	= PHASE_MAIN;		// 状態
 	cnt		= 0;				// カウンタ
 	end_cnt	= 0;				// 終了カウンタ
+	sys::Renderer::fade_in();
 }
 
 /**********

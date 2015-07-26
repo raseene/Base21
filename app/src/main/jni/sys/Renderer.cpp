@@ -53,16 +53,16 @@ void	Renderer::init(int width, int height)
 		screen_rect.y = (height - screen_rect.h)/2;
 		limit_rect.x  = (width - limit_rect.w)/2;
 		limit_rect.y  = (height - limit_rect.h)/2;
+
+		memset(screen_color, 0xff, 4*4);							// スクリーン描画カラー初期化
+		fade_bright	= 0;											// 画面の明るさ
+		fade_speed	= 0;											// フェードの速さ
 	}
 
 	prim_buffer = (u8*)memalign(4, PRIM_BUF_SIZE);					// プリミティブ用汎用バッファ
 	prim_p = 0;
 
 	TexCache::init();												// テクスチャキャッシュ初期化
-
-	memset(screen_color, 0xff, 4*4);								// スクリーン描画カラー初期化
-	fade_bright	= 0;												// 画面の明るさ
-	fade_speed	= 0;												// フェードの速さ
 }
 
 /********************
@@ -268,9 +268,6 @@ void	Renderer::draw(void)
 			fade_bright	= 255;
 			fade_speed	= 0;
 		}
-		for (int i = 0; i < 4*3; i++) {
-			screen_color[i + i/3] = (GLubyte)fade_bright;
-		}
 	}
 	else if ( fade_speed < 0 ) {		// フェードアウト
 		fade_bright += fade_speed;
@@ -278,11 +275,12 @@ void	Renderer::draw(void)
 			fade_bright	= 0;
 			fade_speed	= 0;
 		}
+	}
+	if ( screen_color[0] != (GLubyte)fade_bright ) {
 		for (int i = 0; i < 4*3; i++) {
 			screen_color[i + i/3] = (GLubyte)fade_bright;
 		}
 	}
-
 
 	static const
 	GLfloat	_projection[4*4] =
