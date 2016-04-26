@@ -58,8 +58,9 @@ SoundPlayer::SoundPlayer(void)
 	result = (*outputMixObject)->Realize(outputMixObject, SL_BOOLEAN_FALSE);
 	assert(SL_RESULT_SUCCESS == result);									// リアライズ
 
-	bqPlayerObject = NULL;
-	sound_data = NULL;
+	pcm_buffer		= new char[PCM_BUF_SIZE];
+	bqPlayerObject	= NULL;
+	sound_data		= NULL;
 
 	state = STOPPED;
 }
@@ -74,6 +75,7 @@ SoundPlayer::~SoundPlayer()
 	if ( sound_data ) {
 		delete	sound_data;
 	}
+	delete[]	pcm_buffer;
 }
 
 
@@ -101,13 +103,7 @@ size_t	SoundPlayer::ov_read(void* ptr, size_t size, size_t nmemb)
 		return	0;
 	}
 	size *= _count;
-	if ( size <= sound_data->size - ov_pos ) {
-		memcpy(ptr, sound_data->data + ov_pos, size);
-	}
-	else {
-		memcpy(ptr, sound_data->data + ov_pos, sound_data->size - ov_pos);
-		memset((u8*)ptr + sound_data->size - ov_pos, 0x00, size - (sound_data->size - ov_pos));
-	}
+	memcpy(ptr, sound_data->data + ov_pos, size);
 	ov_pos += size;
 
 	return	_count;
@@ -192,56 +188,6 @@ ov_callbacks	callbacks =
 					callback_ov_tell,
 				};
 
-
-/*************************************
-    OGG展開PCMデータ取得
-			引数	_buf = バッファ
-			戻り値	データサイズ
- *************************************/
-SLuint32	SoundPlayer::get_pcm_data(char* _buf)
-{
-	long		read_size;
-	SLuint32	total = 0;
-
-	while ( total < 0x400 ) {
-		read_size = ::ov_read(&ov_file, _buf + total, 0x400 - total, NULL);
-		if ( bqPlayerObject == NULL ) {
-			return	0;
-		}
-		else if ( read_size > 0 ) {
-			total += read_size;
-		}
-		else if ( sound_data->loop != 1 ) {
-			::ov_pcm_seek(&ov_file, 0);				// ループ
-			if ( sound_data->loop > 1 ) {
-				sound_data->loop--;
-			}
-		}
-		else {
-			if ( sound_data->next == NULL ) {		// 終了
-				break;
-			}
-
-			SoundData*	_next = sound_data->next;	// 連続再生
-
-			sound_data->next = NULL;
-			delete	sound_data;
-			sound_data = _next;
-
-			::ov_clear(&ov_file);
-			ov_pos = 0;
-			if ( ::ov_open_callbacks(this, &ov_file, NULL, 0, callbacks) ) {
-				LOGE("ov_open_callbacks ERROR!");
-				::ov_clear(&ov_file);
-				delete	sound_data;
-				return	0;
-			}
-		}
-	}
-	return	total;
-}
-
-
 /**********************
     再生コールバック
  **********************/
@@ -287,20 +233,49 @@ void	bqPlayerCallbackOGG(SLAndroidSimpleBufferQueueItf, void* context)
 
 void	SoundPlayer::callback_ogg(void)
 {
-	if ( pcm_size > 0 ) {
-		(*bqPlayerBufferQueue)->Enqueue(bqPlayerBufferQueue, &pcm_buffer[buf_cnt][0], pcm_size);
-		buf_cnt = ++buf_cnt % 2;
-		pcm_size = get_pcm_data(&pcm_buffer[buf_cnt][0]);
+	SLuint32	read_size;
+
+	if ( bqPlayerObject == NULL ) {
+		return;
 	}
-	else {												// 終了
-		(*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_STOPPED);
-		::ov_clear(&ov_file);
-		if ( sound_data ) {
-			delete	sound_data;
-			sound_data = NULL;
+	while ( TRUE ) {
+		read_size = ::ov_read(&ov_file, pcm_buffer, PCM_BUF_SIZE, NULL);
+		if ( read_size > 0 ) {
+			(*bqPlayerBufferQueue)->Enqueue(bqPlayerBufferQueue, pcm_buffer, read_size);
+			return;
 		}
-		state = STOPPED;
+
+		if ( sound_data->loop != 1 ) {
+			::ov_pcm_seek(&ov_file, 0);				// ループ
+			if ( sound_data->loop > 1 ) {
+				sound_data->loop--;
+			}
+		}
+		else if ( sound_data->next == NULL ) {		// 終了
+			break;
+		}
+		else {
+			SoundData*	_next = sound_data->next;	// 連続再生
+
+			sound_data->next = NULL;
+			delete	sound_data;
+			sound_data = _next;
+
+			ov_pos = 0;
+			if ( ::ov_open_callbacks(this, &ov_file, NULL, 0, callbacks) ) {
+				LOGE("ov_open_callbacks ERROR!");
+				::ov_clear(&ov_file);
+				break;
+			}
+		}
 	}
+
+	(*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_STOPPED);			// 終了
+	if ( sound_data ) {
+		delete	sound_data;
+		sound_data = NULL;
+	}
+	state = STOPPED;
 }
 
 
@@ -408,7 +383,7 @@ void	SoundPlayer::prepare(const void* _data, u32 _size, int _loop, float _vol)
 	SLDataLocator_OutputMix		loc_outmix = {SL_DATALOCATOR_OUTPUTMIX, outputMixObject};
 	SLDataSink					audioSnk = {&loc_outmix, NULL};
 
-	const SLInterfaceID		ids[3] = {SL_IID_PLAY, SL_IID_BUFFERQUEUE, SL_IID_VOLUME};
+	const SLInterfaceID		ids[3] = {SL_IID_PLAY, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, SL_IID_VOLUME};
 	const SLboolean			req[3] = {SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE};
 
 	SLresult	result;
@@ -425,7 +400,7 @@ void	SoundPlayer::prepare(const void* _data, u32 _size, int _loop, float _vol)
 	result = (*bqPlayerObject)->GetInterface(bqPlayerObject, SL_IID_PLAY, &bqPlayerPlay);
 	assert(SL_RESULT_SUCCESS == result);									// インタフェース取得
 
-	result = (*bqPlayerObject)->GetInterface(bqPlayerObject, SL_IID_BUFFERQUEUE, &bqPlayerBufferQueue);
+	result = (*bqPlayerObject)->GetInterface(bqPlayerObject, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, &bqPlayerBufferQueue);
 	assert(SL_RESULT_SUCCESS == result);									// バッファキューインタフェース
 
 	result = (*bqPlayerObject)->GetInterface(bqPlayerObject, SL_IID_VOLUME, &bqPlayerVolume);
@@ -436,7 +411,7 @@ void	SoundPlayer::prepare(const void* _data, u32 _size, int _loop, float _vol)
 	  case FORMAT_WAV :			// WAV
 		{
 			result = (*bqPlayerBufferQueue)->RegisterCallback(bqPlayerBufferQueue, bqPlayerCallbackWAV, this);
-			assert(SL_RESULT_SUCCESS == result);										// 再生コールバック設定
+			assert(SL_RESULT_SUCCESS == result);							// 再生コールバック設定
 
 			(*bqPlayerBufferQueue)->Enqueue(bqPlayerBufferQueue, sound_data->data, (SLuint32)sound_data->size);
 		}
@@ -445,12 +420,9 @@ void	SoundPlayer::prepare(const void* _data, u32 _size, int _loop, float _vol)
 	  case FORMAT_OGG :			// OGG
 		{
 			result = (*bqPlayerBufferQueue)->RegisterCallback(bqPlayerBufferQueue, bqPlayerCallbackOGG, this);
-			assert(SL_RESULT_SUCCESS == result);										// 再生コールバック設定
+			assert(SL_RESULT_SUCCESS == result);							// 再生コールバック設定
 
-			pcm_size	= get_pcm_data(&pcm_buffer[0][0]);								// データ読み込み
-			(*bqPlayerBufferQueue)->Enqueue(bqPlayerBufferQueue, &pcm_buffer[0][0], pcm_size);
-			buf_cnt		= 1;
-			pcm_size	= get_pcm_data(&pcm_buffer[1][0]);
+			callback_ogg();													// データ読み込み
 		}
 		break;
 	}

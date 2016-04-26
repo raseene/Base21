@@ -12,6 +12,7 @@ using namespace sys;
 extern "C"
 {
 JNIEXPORT int JNICALL		Java_sys_BaseActivity_initNative(JNIEnv*, jobject, jboolean, jint, jint, jobject);
+JNIEXPORT void JNICALL		Java_sys_BaseActivity_setScreenNative(JNIEnv*, jobject, jint, jint);
 JNIEXPORT void JNICALL		Java_sys_BaseActivity_quitNative(JNIEnv*, jobject);
 JNIEXPORT void JNICALL		Java_sys_BaseActivity_pauseNative(JNIEnv*, jobject);
 JNIEXPORT jboolean JNICALL	Java_sys_BaseActivity_updateNative(JNIEnv*, jobject, jbyteArray, jint);
@@ -56,6 +57,16 @@ JNIEXPORT int JNICALL	Java_sys_BaseActivity_initNative(JNIEnv* env, jobject, jbo
 	}
 
 	return	FRAME_PERIOD;
+}
+
+/********************
+    画面サイズ設定
+ ********************/
+JNIEXPORT void JNICALL		Java_sys_BaseActivity_setScreenNative(JNIEnv*, jobject, jint width, jint height)
+{
+	LOGI("setScreenNative (%d, %d)", width, height);
+
+	Renderer::set_screen(width, height);
 }
 
 /**********

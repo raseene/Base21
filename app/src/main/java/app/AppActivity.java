@@ -49,6 +49,16 @@ public class AppActivity extends BaseActivity
 		{
 			return	app.onCreateDialog();
 		}
+
+		@Override
+		public void		onDismiss(DialogInterface dialog)
+		{
+			super.onDismiss(dialog);
+
+			if ( app.key_status == 0 ) {
+				app.key_status = KEY_NO;
+			}
+		}
 	}
 
 	public Dialog	onCreateDialog()

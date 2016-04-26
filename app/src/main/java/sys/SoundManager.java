@@ -23,7 +23,6 @@ public class SoundManager implements Runnable
 		queue	= new ArrayBlockingQueue<SoundCommand>(32, true);		// キュー作成
 		manager	= new SoundManager();
 		thread	= new Thread(manager);
-//		thread.setPriority(9);
 		thread.start();
 	}
 
@@ -80,6 +79,7 @@ public class SoundManager implements Runnable
 	{
 		SoundCommand	_command;
 
+		android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
 		while ( true ) {
 			try {
 				_command = queue.take();					// コマンド取得

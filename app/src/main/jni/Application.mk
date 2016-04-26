@@ -7,5 +7,6 @@ else
   APP_ABI := armeabi armeabi-v7a
 endif
 APP_PLATFORM := android-9
-APP_STL := stlport_static
+APP_STL := gnustl_static
+STLPORT_FORCE_REBUILD := true
 APP_CFLAGS += -Ofast

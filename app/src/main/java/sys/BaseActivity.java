@@ -59,10 +59,11 @@ public class BaseActivity extends FragmentActivity
 	private ScheduledFuture<?>			future;
 
 	private short[]			touch_status = new short[5*3];		// タッチパネル状態
-	protected int			key_status;							// キー入力状態
+	protected int			key_status = 0;						// キー入力状態
 
 
 	public native int		initNative(boolean _init, int _w, int _h, AssetManager _mgr);	// native部初期化
+	public native void		setScreenNative(int _w, int _h);								// native部画面サイズ設定
 	public native void		quitNative();													// native部終了
 	public native void		pauseNative();													// native部一時停止
 	public native boolean	updateNative(short _touch[], int _key);							// native部稼働
@@ -86,13 +87,7 @@ public class BaseActivity extends FragmentActivity
 	{
 		super.onCreate(_savedInstanceState);
 
-		if ( _savedInstanceState == null ) {
-			phase = 0;
-			SoundManager.init();										// サウンド管理初期化
-		}
-		else {
-			phase = 1;
-		}
+		phase = (_savedInstanceState == null) ? 0 : 1;
 
 		if ( _base == null ) {
 			base_layout = new FrameLayout(this);						// ベースレイアウト
@@ -129,6 +124,13 @@ public class BaseActivity extends FragmentActivity
 		base_layout.addView(surface_view, 0);
 	}
 
+	@Override
+	protected void	onStart()
+	{
+		super.onStart();
+		SoundManager.init();						// サウンド管理初期化
+	}
+
 	/**********
 	    終了
 	 **********/
@@ -144,13 +146,19 @@ public class BaseActivity extends FragmentActivity
 	{
 		if ( phase < 0 ) {
 			quitNative();							// native部終了
-			SoundManager.quit();					// サウンド管理終了
 		}
 		if ( executor != null ) {
 			executor.shutdown();
 			executor = null;
 		}
 		super.onDestroy();
+	}
+
+	@Override
+	protected void	onStop()
+	{
+		super.onStop();
+		SoundManager.quit();						// サウンド管理終了
 	}
 
 	/**************
@@ -373,8 +381,7 @@ public class BaseActivity extends FragmentActivity
 				if ( future == null ) {
 					int		period = initNative((phase == 0), width, height, getAssets());		// native部初期化
 
-					phase      = 1;
-					key_status = 0;
+					phase = 1;
 					future = executor.scheduleAtFixedRate(new Runnable()	// 定期実行開始
 					{
 						@Override
@@ -384,6 +391,9 @@ public class BaseActivity extends FragmentActivity
 						}
 					},
 					0, period, TimeUnit.MILLISECONDS);
+				}
+				else {
+					setScreenNative(width, height);												// native部画面サイズ設定
 				}
 			}
 		}

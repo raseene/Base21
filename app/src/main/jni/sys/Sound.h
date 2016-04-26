@@ -57,14 +57,15 @@ struct SoundData
 class SoundPlayer
 {
 public :
+	static const int	PCM_BUF_SIZE = 0x1000;
 
-	static SLObjectItf	engineObject;					// エンジンオブジェクト
-	static SLEngineItf	engineEngine;					// インタフェース
-	static float		master_volume;					// マスター音量
+	static SLObjectItf	engineObject;				// エンジンオブジェクト
+	static SLEngineItf	engineEngine;				// インタフェース
+	static float		master_volume;				// マスター音量
 
-	static void		init_engine(void);					// 初期化
-	static void		quit_engine(void);					// 終了
-	static Bool		set_master_volume(float);			// マスター音量設定
+	static void		init_engine(void);				// 初期化
+	static void		quit_engine(void);				// 終了
+	static Bool		set_master_volume(float);		// マスター音量設定
 
 
 private :
@@ -75,19 +76,15 @@ private :
 	SLAndroidSimpleBufferQueueItf	bqPlayerBufferQueue;		// バッファキューインタフェース
 	SLVolumeItf						bqPlayerVolume;				// 音量インタフェース
 
-	int				state;						// 状態
-	float			volume;						// 音量
-	float			fade_volume;				// フェードアウト音量
-	int				format;						// データフォーマット
-	SoundData*		sound_data;					// サウンドデータ
+	int				state;				// 状態
+	float			volume;				// 音量
+	float			fade_volume;		// フェードアウト音量
+	int				format;				// データフォーマット
+	SoundData*		sound_data;			// サウンドデータ
 
-	OggVorbis_File	ov_file;					// OggVorbisファイル情報
-	long			ov_pos;						// 現在位置
-	char			pcm_buffer[2][0x400];		// PCMデータ展開バッファ
-	SLuint32		pcm_size;					// PCMデータサイズ
-	int				buf_cnt;					// 使用バッファカウンタ
-
-	SLuint32	get_pcm_data(char*);			// OGG展開PCMデータ取得
+	OggVorbis_File	ov_file;			// OggVorbisファイル情報
+	long			ov_pos;				// 現在位置
+	char*			pcm_buffer;			// PCMデータ展開バッファ
 
 public :
 

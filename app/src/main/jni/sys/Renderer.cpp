@@ -37,25 +37,9 @@ void	Renderer::init(int width, int height)
 	frame_buffer = new FrameBuffer(LIMIT_WIDTH, LIMIT_HEIGHT);		// フレームバッファ作成
 
 	if ( width > 0 ) {
-		if ( width*SCREEN_HEIGHT < height*SCREEN_WIDTH ) {			// 横長（上下カット）
-			screen_rect.w = width;
-			screen_rect.h = width*SCREEN_HEIGHT/SCREEN_WIDTH;
-			limit_rect.w  = width*LIMIT_WIDTH/SCREEN_WIDTH;
-			limit_rect.h  = width*LIMIT_HEIGHT/SCREEN_WIDTH;
-		}
-		else {														// 縦長（左右カット）
-			screen_rect.w = height*SCREEN_WIDTH/SCREEN_HEIGHT;
-			screen_rect.h = height;
-			limit_rect.w  = height*LIMIT_WIDTH/SCREEN_HEIGHT;
-			limit_rect.h  = height*LIMIT_HEIGHT/SCREEN_HEIGHT;
-		}
-		screen_rect.x = (width - screen_rect.w)/2;
-		screen_rect.y = (height - screen_rect.h)/2;
-		limit_rect.x  = (width - limit_rect.w)/2;
-		limit_rect.y  = (height - limit_rect.h)/2;
-
+		set_screen(width, height);									// 画面サイズ設定
 		memset(screen_color, 0xff, 4*4);							// スクリーン描画カラー初期化
-		fade_bright	= 0;											// 画面の明るさ
+		fade_bright	= BRIGHT_INIT;									// 画面の明るさ
 		fade_speed	= 0;											// フェードの速さ
 	}
 
@@ -65,14 +49,36 @@ void	Renderer::init(int width, int height)
 	TexCache::init();												// テクスチャキャッシュ初期化
 }
 
+/************************************************
+    画面サイズ設定
+		引数	width, height = 端末画面サイズ
+ ************************************************/
+void	Renderer::set_screen(int width, int height)
+{
+	if ( width*SCREEN_HEIGHT < height*SCREEN_WIDTH ) {				// 横長（上下カット）
+		screen_rect.w = width;
+		screen_rect.h = width*SCREEN_HEIGHT/SCREEN_WIDTH;
+		limit_rect.w  = width*LIMIT_WIDTH/SCREEN_WIDTH;
+		limit_rect.h  = width*LIMIT_HEIGHT/SCREEN_WIDTH;
+	}
+	else {															// 縦長（左右カット）
+		screen_rect.w = height*SCREEN_WIDTH/SCREEN_HEIGHT;
+		screen_rect.h = height;
+		limit_rect.w  = height*LIMIT_WIDTH/SCREEN_HEIGHT;
+		limit_rect.h  = height*LIMIT_HEIGHT/SCREEN_HEIGHT;
+	}
+	screen_rect.x = (width - screen_rect.w)/2;
+	screen_rect.y = (height - screen_rect.h)/2;
+	limit_rect.x  = (width - limit_rect.w)/2;
+	limit_rect.y  = (height - limit_rect.h)/2;
+}
+
 /********************
     シェーダ初期化
  ********************/
 void	Renderer::initShader(void)
 {
 	shader = new ShaderProgram[SHADER_MAX];
-
-	GLuint	vert_shader, frag_shader;
 
 	{						// SHADER_PLAIN（テクスチャ無し）
 		static const
@@ -94,12 +100,7 @@ void	Renderer::initShader(void)
 						"gl_FragColor = vColor;"
 					"}";
 
-		vert_shader = loadShader(GL_VERTEX_SHADER, gVertexShader);			// 頂点シェーダ
-		frag_shader = loadShader(GL_FRAGMENT_SHADER, gFragmentShader);		// フラグメントシェーダ
-
-		shader[SHADER_PLAIN].init(vert_shader, frag_shader, FALSE);			// シェーダプログラム作成
-		glDeleteShader(vert_shader);
-		glDeleteShader(frag_shader);
+		shader[SHADER_PLAIN].init(gVertexShader, gFragmentShader);
 	}
 
 	{						// SHADER_TEXTURE（テクスチャ有り）
@@ -127,53 +128,16 @@ void	Renderer::initShader(void)
 						"gl_FragColor = texture2D(texture, vTexcoord)*vColor;"
 					"}";
 
-		vert_shader = loadShader(GL_VERTEX_SHADER, gVertexShader);			// 頂点シェーダ
-		frag_shader = loadShader(GL_FRAGMENT_SHADER, gFragmentShader);		// フラグメントシェーダ
-
-		shader[SHADER_TEXTURE].init(vert_shader, frag_shader, TRUE);		// シェーダプログラム作成
-		glDeleteShader(vert_shader);
-		glDeleteShader(frag_shader);
+		shader[SHADER_TEXTURE].init(gVertexShader, gFragmentShader);
 	}
 }
 
-/*******************************************
-    シェーダ作成
-		引数	type   = シェーダ種類
-				source = プログラムソース
-		戻り値	シェーダオブジェクト
- *******************************************/
-GLuint	Renderer::loadShader(GLenum type, const char* source)
-{
-    GLuint	_shader = glCreateShader(type);						// シェーダオブジェクト作成
-    GLint	_compiled = 0;
-
-	assert(_shader != 0);
-	glShaderSource(_shader, 1, &source, NULL);					// プログラムソース設定
-	glCompileShader(_shader);									// コンパイル
-	glGetShaderiv(_shader, GL_COMPILE_STATUS, &_compiled);		// コンパイル結果取得
-	if ( !_compiled ) {											// コンパイル失敗
-		GLchar*	_buf;
-		GLint	_len;
-
-		glGetShaderiv(_shader, GL_INFO_LOG_LENGTH, &_len);
-		if ( (_len > 0) && (_buf = new GLchar[_len]) ) {
-			glGetShaderInfoLog(_shader, _len, NULL, _buf);		// エラーログ取得
-			LOGE("Could not compile shader %d:\n%s\n", type, _buf);
-			delete[]	_buf;
-		}
-		glDeleteShader(_shader);
-		return	0;
-	}
-	return	_shader;
-}
-
-/***************************************************
+/*************************************************
     シェーダプログラム作成
 		引数	v_shader = 頂点シェーダ
 				f_shader = フラグメントシェーダ
-				tex_flag = テクスチャを使用するか
- ***************************************************/
-void	ShaderProgram::init(GLuint v_shader, GLuint f_shader, Bool tex_flag)
+ *************************************************/
+void	ShaderProgram::init(GLuint v_shader, GLuint f_shader)
 {
 	program = glCreateProgram();								// プログラムオブジェクト作成
 	assert(program != 0);
@@ -204,6 +168,50 @@ void	ShaderProgram::init(GLuint v_shader, GLuint f_shader, Bool tex_flag)
 	projection	= glGetUniformLocation(program, "projection");		// 透視変換
 	texture		= glGetUniformLocation(program, "texture");			// テクスチャ
 	texcoord	= glGetAttribLocation(program, "texcoord");			// テクスチャUV座標
+}
+
+void	ShaderProgram::init(char const* v_source, char const* f_source)
+{
+	GLuint	vert_shader, frag_shader;
+
+	vert_shader = loadShader(GL_VERTEX_SHADER, v_source);			// 頂点シェーダ
+	frag_shader = loadShader(GL_FRAGMENT_SHADER, f_source);			// フラグメントシェーダ
+
+	init(vert_shader, frag_shader);
+
+	glDeleteShader(vert_shader);
+	glDeleteShader(frag_shader);
+}
+
+/*******************************************
+    シェーダ作成
+		引数	type   = シェーダ種類
+				source = プログラムソース
+		戻り値	シェーダオブジェクト
+ *******************************************/
+GLuint	ShaderProgram::loadShader(GLenum type, const char* source)
+{
+    GLuint	_shader = glCreateShader(type);						// シェーダオブジェクト作成
+    GLint	_compiled = 0;
+
+	assert(_shader != 0);
+	glShaderSource(_shader, 1, &source, NULL);					// プログラムソース設定
+	glCompileShader(_shader);									// コンパイル
+	glGetShaderiv(_shader, GL_COMPILE_STATUS, &_compiled);		// コンパイル結果取得
+	if ( !_compiled ) {											// コンパイル失敗
+		GLchar*	_buf;
+		GLint	_len;
+
+		glGetShaderiv(_shader, GL_INFO_LOG_LENGTH, &_len);
+		if ( (_len > 0) && (_buf = new GLchar[_len]) ) {
+			glGetShaderInfoLog(_shader, _len, NULL, _buf);		// エラーログ取得
+			LOGE("Could not compile shader %d:\n%s\n", type, _buf);
+			delete[]	_buf;
+		}
+		glDeleteShader(_shader);
+		return	0;
+	}
+	return	_shader;
 }
 
 
@@ -325,16 +333,16 @@ void	Renderer::draw(void)
 
 /************************************
     シェーダ使用
-		引数	num = シェーダ番号
+		引数	_sd = シェーダ番号
 		戻り値	シェーダ
  ************************************/
-ShaderProgram*	Renderer::use_shader(int num)
+ShaderProgram*	Renderer::use_shader(ShaderProgram* _sd)
 {
-	if ( current_shader != &shader[num] ) {			// シェーダ切り替え
+	if ( current_shader != _sd ) {					// シェーダ切り替え
 		if ( current_shader ) {
 			current_shader->unuse();
 		}
-		current_shader = &shader[num];
+		current_shader = _sd;
 		current_shader->use(mat_projection);
 	}
 	return	current_shader;

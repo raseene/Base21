@@ -146,7 +146,7 @@ void	Sprite::set_color(u32 _color)
 
 void	Sprite::set_color(u32 const* _color)
 {
-	u32*	_p = (u32*)Renderer::get_prim_buffer(sizeof(u32)*4);		// カラーバッファ
+	u32*	_p = (u32*)Renderer::get_prim_buffer(sizeof(u32)*4);			// カラーバッファ
 
 	_p[0] = _color[0];
 	_p[1] = _color[1];
@@ -161,17 +161,16 @@ void	Sprite::set_color(u32 const* _color)
  ********************/
 void	Sprite::bind_texture(void)
 {
-	if ( texture ) {				// テクスチャ有り
+	if ( shader >= 0 ) {
 		Renderer::use_shader((int)shader);					// シェーダ
+	}
+	if ( texture ) {				// テクスチャ有り
 		if ( res_type >= 0 ) {								// テクスチャキャッシュ
 			texture = TexCache::get_texture(res_type, res_data);			// テクスチャ取得
 			res_type &= ~TexCache::RES_UPDATE;
 		}
 		texture->bind();									// テクスチャ
 		Renderer::set_texcoord(&texcoord[0][0]);			// UV座標
-	}
-	else {							// テクスチャ無し
-		Renderer::use_shader(Renderer::SHADER_PLAIN);		// シェーダ
 	}
 	Renderer::set_color((GLubyte*)spr_color);				// カラー
 }

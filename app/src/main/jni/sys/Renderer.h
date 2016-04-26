@@ -27,14 +27,21 @@ struct ShaderProgram
 		{
 			program = 0;
 		}
+		ShaderProgram(char const* v_source, char const* f_source)
+		{
+			init(v_source, f_source);
+		}
 		~ShaderProgram()					// デストラクタ
 		{
 			quit();
 		}
-	void	init(GLuint, GLuint, Bool);		// 初期化
+	void	init(GLuint, GLuint);			// 初期化
+	void	init(char const*, char const*);
 	void	use(const GLfloat*);			// 使用
 	void	unuse(void);
 	void	quit(void);						// 終了
+
+	static GLuint	loadShader(GLenum, const char*);	// シェーダ作成
 };
 
 /**************
@@ -56,7 +63,6 @@ class Renderer
 	static int		fade_speed;							// フェードの速さ
 
 	static void		initShader(void);					// シェーダ初期化
-	static GLuint	loadShader(GLenum, const char*);	// シェーダ作成
 
 public :
 
@@ -75,10 +81,15 @@ enum
 	static GLfloat const*	mat_projection;				// 透視変換行列
 
 	static void		init(int, int);						// 初期化
+	static void		set_screen(int, int);				// 画面サイズ設定
 	static void		quit(void);							// 終了
 	static void		update(void);						// 稼働（前処理）
 	static void		draw(void);							// 描画（後処理）
-	static ShaderProgram*	use_shader(int);			// シェーダ使用
+	static ShaderProgram*	use_shader(ShaderProgram*);	// シェーダ使用
+	static ShaderProgram*	use_shader(int _n)
+							{
+								return	use_shader(&shader[_n]);
+							}
 	static void		bind_texture(GLuint);				// テクスチャ使用
 	static void		set_color(GLubyte const*);			// カラー設定
 	static void		set_texcoord(GLfloat const*);		// テクスチャUV座標設定
