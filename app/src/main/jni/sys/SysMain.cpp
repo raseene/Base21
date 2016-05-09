@@ -11,11 +11,11 @@ using namespace sys;
 
 extern "C"
 {
-JNIEXPORT int JNICALL		Java_sys_BaseActivity_initNative(JNIEnv*, jobject, jboolean, jint, jint, jobject);
+JNIEXPORT int JNICALL		Java_sys_BaseActivity_initNative(JNIEnv*, jobject, jboolean, jobject);
 JNIEXPORT void JNICALL		Java_sys_BaseActivity_setScreenNative(JNIEnv*, jobject, jint, jint);
 JNIEXPORT void JNICALL		Java_sys_BaseActivity_quitNative(JNIEnv*, jobject);
 JNIEXPORT void JNICALL		Java_sys_BaseActivity_pauseNative(JNIEnv*, jobject);
-JNIEXPORT jboolean JNICALL	Java_sys_BaseActivity_updateNative(JNIEnv*, jobject, jbyteArray, jint);
+JNIEXPORT jboolean JNICALL	Java_sys_BaseActivity_updateNative(JNIEnv*, jobject, jboolean, jbyteArray, jint);
 }
 
 void	init_app(void);			// メイン初期化
@@ -30,14 +30,14 @@ static Bool		end_flag = FALSE;				// 終了フラグ
 /************
     初期化
  ************/
-JNIEXPORT int JNICALL	Java_sys_BaseActivity_initNative(JNIEnv* env, jobject, jboolean init_flag, jint width, jint height, jobject mgr)
+JNIEXPORT int JNICALL	Java_sys_BaseActivity_initNative(JNIEnv* env, jobject, jboolean init_flag, jobject mgr)
 {
-	LOGI("initNative (%d, %d)", width, height);
+	LOGI("initNative");
 
 	asset_manager = AAssetManager_fromJava(env, mgr);		// asset読み込みマネージャー
 	assert(asset_manager != NULL);
 
-	Renderer::init(init_flag ? width : 0, height);			// 描画管理初期化
+	Renderer::init(init_flag);					// 描画管理初期化
 	TouchManager::init_manager();				// タッチパネル管理初期化
 
 	if ( init_flag ) {
@@ -56,7 +56,7 @@ JNIEXPORT int JNICALL	Java_sys_BaseActivity_initNative(JNIEnv* env, jobject, jbo
 		resume_app();							// アプリメイン再開
 	}
 
-	return	FRAME_PERIOD;
+	return	FRAME_RATE;
 }
 
 /********************
@@ -99,9 +99,9 @@ JNIEXPORT void JNICALL	Java_sys_BaseActivity_pauseNative(JNIEnv*, jobject)
 /**********
     稼働
  **********/
-JNIEXPORT jboolean JNICALL	Java_sys_BaseActivity_updateNative(JNIEnv* env, jobject, jbyteArray touch, jint key)
+JNIEXPORT jboolean JNICALL	Java_sys_BaseActivity_updateNative(JNIEnv* env, jobject, jboolean draw, jbyteArray touch, jint key)
 {
-	Renderer::update();							// 描画前処理
+	Renderer::update(draw);						// 描画前処理
 	SoundManager::update();						// サウンド処理
 	key_status = key;							// キー入力状態
 

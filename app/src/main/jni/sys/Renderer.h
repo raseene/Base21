@@ -79,11 +79,12 @@ enum
 	static FrameBuffer*		frame_buffer;				// フレームバッファ
 	static ShaderProgram*	current_shader;				// 使用中シェーダ
 	static GLfloat const*	mat_projection;				// 透視変換行列
+	static Bool				draw_flag;					// 描画フラグ
 
-	static void		init(int, int);						// 初期化
+	static void		init(Bool);							// 初期化
 	static void		set_screen(int, int);				// 画面サイズ設定
 	static void		quit(void);							// 終了
-	static void		update(void);						// 稼働（前処理）
+	static void		update(Bool);						// 稼働（前処理）
 	static void		draw(void);							// 描画（後処理）
 	static ShaderProgram*	use_shader(ShaderProgram*);	// シェーダ使用
 	static ShaderProgram*	use_shader(int _n)
@@ -100,11 +101,11 @@ enum
 						return	(Bool)prim_buffer;
 					}
 
-	static void		fade_in(int _cnt = 500/FRAME_PERIOD)		// フェードイン
+	static void		fade_in(int _cnt = FRAME_RATE/2)			// フェードイン
 					{
 						fade_speed = (_cnt > 0) ? (254 + _cnt)/_cnt : 255;
 					}
-	static void		fade_out(int _cnt = 500/FRAME_PERIOD)		// フェードアウト
+	static void		fade_out(int _cnt = FRAME_RATE/2)			// フェードアウト
 					{
 						fade_speed = (_cnt > 0) ? -(254 + _cnt)/_cnt : -255;
 					}

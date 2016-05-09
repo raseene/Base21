@@ -6,19 +6,22 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.AssetManager;
-import android.content.res.Configuration;
-import android.opengl.GLSurfaceView;
+import android.graphics.SurfaceTexture;
+import android.os.Build;
 import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
+import android.view.TextureView;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 import javax.microedition.khronos.egl.EGL10;
@@ -26,47 +29,51 @@ import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.egl.EGLContext;
 import javax.microedition.khronos.egl.EGLDisplay;
 import javax.microedition.khronos.egl.EGLSurface;
-import javax.microedition.khronos.opengles.GL10;
-
-import sys.SoundManager;
 
 
 /********************
     アクティビティ
  ********************/
-public class BaseActivity extends FragmentActivity
+public class BaseActivity extends FragmentActivity implements Runnable
 {
 	static {
 		System.loadLibrary("native");
     }
 
 
-	private final static int	NATIVE_PRIORITY	= 7;			// nativeスレッド優先度
+	private final static int	NATIVE_PRIORITY	= android.os.Process.THREAD_PRIORITY_MORE_FAVORABLE;		// nativeスレッド優先度
 
-	public final static int		KEY_BACK	= 1;				// バックキー
-	public final static int		KEY_YES		= 2;				// ダイアログ用
-	public final static int		KEY_NO		= 3;
+	public final static int		KEY_BACK = 1;					// バックキー
+	public final static int		KEY_YES	 = 2;					// ダイアログ用
+	public final static int		KEY_NO   = 3;
+
+	private final static int	PHASE_RUN      = 0;				// 実行中
+	private final static int	PHASE_INIT     = 1;				// 初期化
+	private final static int	PHASE_CONTINUE = 2;				// 再開
+	private final static int	PHASE_STOP     = 3;				// 中断
+	private final static int	PHASE_FINISH   = 4;				// 終了
 
 
-	protected final Object	obj_sync = new Object();
 	protected FrameLayout	base_layout;						// ベースレイアウト
-	private BaseView		surface_view;						// ビュー
+	protected BaseView		base_view;							// ビュー
 	private int				phase;								// 実行段階
-	protected int			screen_width;						// 画面の大きさ
-	protected int			screen_height;
+	protected int			screen_width, screen_height;		// 画面の大きさ
+	private final Object	sync_native = new Object();
 
 	private ScheduledExecutorService	executor;				// 定期実行管理
 	private ScheduledFuture<?>			future;
+	private long			time0, time1;
+	private int				frame_rate;							// フレームレート
 
 	private short[]			touch_status = new short[5*3];		// タッチパネル状態
 	protected int			key_status = 0;						// キー入力状態
 
 
-	public native int		initNative(boolean _init, int _w, int _h, AssetManager _mgr);	// native部初期化
-	public native void		setScreenNative(int _w, int _h);								// native部画面サイズ設定
-	public native void		quitNative();													// native部終了
-	public native void		pauseNative();													// native部一時停止
-	public native boolean	updateNative(short _touch[], int _key);							// native部稼働
+	public native int		initNative(boolean _init, AssetManager _mgr);			// native部初期化
+	public native void		setScreenNative(int _w, int _h);						// native部画面サイズ設定
+	public native void		quitNative();											// native部終了
+	public native void		pauseNative();											// native部一時停止
+	public native boolean	updateNative(boolean draw, short _touch[], int _key);	// native部稼働
 
 
 	/**********
@@ -86,42 +93,29 @@ public class BaseActivity extends FragmentActivity
 	protected void	onCreate2(Bundle _savedInstanceState, FrameLayout _base, int[] _attribs)
 	{
 		super.onCreate(_savedInstanceState);
+		phase = (_savedInstanceState == null) ? PHASE_INIT : PHASE_CONTINUE;
 
-		phase = (_savedInstanceState == null) ? 0 : 1;
+		if ( _attribs == null ) {
+			_attribs = (new int[]
+						{									// デフォルト 画面アトリビュート
+							EGL10.EGL_RED_SIZE,		8,
+							EGL10.EGL_GREEN_SIZE,	8,
+							EGL10.EGL_BLUE_SIZE,	8,
+							EGL10.EGL_DEPTH_SIZE,	0,
+							EGL10.EGL_STENCIL_SIZE,	0,
+							EGL10.EGL_NONE
+						});
+		}
+		base_view = new BaseView((Build.VERSION.SDK_INT < 14), _attribs);		// ベースビュー
 
 		if ( _base == null ) {
-			base_layout = new FrameLayout(this);						// ベースレイアウト
-			setContentView(base_layout);
+			base_layout = base_view;
+			setContentView(base_view);
 		}
 		else {
-			base_layout	= _base;
+			base_layout = _base;
+			base_layout.addView(base_view, 0);
 		}
-
-		executor = Executors.newSingleThreadScheduledExecutor(new ThreadFactory()		// 定期実行管理
-		{
-			@Override
-			public Thread	newThread(Runnable r)
-			{
-				Thread	thread = new Thread(r);
-
-				thread.setPriority(NATIVE_PRIORITY);
-				return	thread;
-			}
-		});
-
-		// デフォルト 画面アトリビュート
-		final int[]		configAttribs =
-		{
-			EGL10.EGL_RED_SIZE,		8,
-			EGL10.EGL_GREEN_SIZE,	8,
-			EGL10.EGL_BLUE_SIZE,	8,
-			EGL10.EGL_DEPTH_SIZE,	0,
-			EGL10.EGL_STENCIL_SIZE,	0,
-			EGL10.EGL_NONE
-		};
-
-		surface_view = new BaseView(new BaseRenderer(), (_attribs != null) ? _attribs : configAttribs);		// ビュー作成
-		base_layout.addView(surface_view, 0);
 	}
 
 	@Override
@@ -137,19 +131,15 @@ public class BaseActivity extends FragmentActivity
 	@Override
 	public void		finish()
 	{
-		phase = -1;
+		phase = PHASE_FINISH;
 		super.finish();
 	}
 
 	@Override
 	protected void	onDestroy()
 	{
-		if ( phase < 0 ) {
+		if ( phase == PHASE_FINISH ) {
 			quitNative();							// native部終了
-		}
-		if ( executor != null ) {
-			executor.shutdown();
-			executor = null;
 		}
 		super.onDestroy();
 	}
@@ -161,29 +151,6 @@ public class BaseActivity extends FragmentActivity
 		SoundManager.quit();						// サウンド管理終了
 	}
 
-	/**************
-	    一時停止
-	 **************/
-	@Override
-	protected void	onPause()
-	{
-		super.onPause();
-		if ( future != null ) {						// 定期実行停止
-			future.cancel(false);
-			future = null;
-		}
-		if ( receiver != null ) {
-			unregisterReceiver(receiver);			// レシーバー登録を解除
-			receiver = null;
-		}
-		synchronized (obj_sync)
-		{
-			surface_view.onPause();
-			pauseNative();							// native部一時停止
-		}
-		getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);		// スリープ禁止解除
-	}
-
 	/**********
 	    再開
 	 **********/
@@ -192,7 +159,9 @@ public class BaseActivity extends FragmentActivity
 	{
 		super.onResume();
 
-		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);		// スリープ禁止
+		executor = Executors.newSingleThreadScheduledExecutor();	// 描画スレッド管理
+
+		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);					// スリープ禁止
 		for (int i = 0; i < 5; i++) {				// タッチパネル状態クリア
 			touch_status[i*3] = 0;
 		}
@@ -201,7 +170,7 @@ public class BaseActivity extends FragmentActivity
 			registerReceiver(receiver, new IntentFilter(Intent.ACTION_USER_PRESENT));			// スクリーンロック解除待ち
 		}
 		else {
-			surface_view.onResume();
+			start();
 		}
 	}
 
@@ -214,24 +183,138 @@ public class BaseActivity extends FragmentActivity
 		{
 			unregisterReceiver(receiver);							// レシーバー登録を解除
 			receiver = null;
-			surface_view.onResume();
+			start();
 		}
 	}
 
-	/**********
+	/**************
+	    一時停止
+	 **************/
+	@Override synchronized
+	protected void	onPause()
+	{
+		super.onPause();
+		if ( phase == PHASE_RUN ) {
+			phase = PHASE_STOP;
+		}
+		if ( future != null ) {						// 定期実行停止
+			future.cancel(false);
+			future = null;
+		}
+		try {
+			executor.submit(new Runnable()
+			{
+				@Override
+				public void		run()
+				{
+					base_view.quitGL();				// OpenGL終了
+				}
+			}).get();
+		}
+		catch (InterruptedException | ExecutionException e) {}
+		executor.shutdown();
+		executor = null;
+		if ( phase >= PHASE_STOP ) {
+			pauseNative();							// native部一時停止
+		}
+		if ( receiver != null ) {
+			unregisterReceiver(receiver);			// レシーバー登録を解除
+			receiver = null;
+		}
+		getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);		// スリープ禁止解除
+	}
+
+	/********************************
+	    開始
+			戻り値	フレームレート
+	 ********************************/
+	synchronized
+	public void		start()
+	{
+		if ( (executor == null) || (base_view.native_window == null) ) {
+			return;
+		}
+
+		try {
+			executor.submit(new Runnable()
+			{
+				@Override
+				public void		run()
+				{
+					android.os.Process.setThreadPriority(NATIVE_PRIORITY);
+					base_view.initGL()	;															// OpenGL初期化
+					synchronized (sync_native) {
+						frame_rate = initNative((phase == PHASE_INIT), getAssets());				// native部初期化
+					}
+					phase = PHASE_RUN;
+
+					time0 = System.currentTimeMillis();
+					time1 = 0;
+				}
+			}).get();
+		}
+		catch (InterruptedException | ExecutionException e) {}
+
+		future = executor.scheduleAtFixedRate(this, 0, 1000/frame_rate, TimeUnit.MILLISECONDS);		// 定期実行開始
+	}
+
+	/*********
 	    稼働
 	 **********/
-	protected void	update()
+	@Override
+	public void		run()
 	{
-		surface_view.requestRender();				// 描画リクエスト
+		if ( phase == PHASE_RUN ) {
+			long	_t = System.currentTimeMillis();
+			int		_loop;
+
+			time1 += (_t - time0)*frame_rate;
+			if ( time1 > 4*1000 - 1 ) {
+				time1 = 4*1000 - 1;
+			}
+			time0 = _t;
+			_loop = (int)time1/1000;
+			if ( _loop > 0 ) {
+				time1 -= _loop*1000;
+
+				base_view.swap();
+				synchronized (sync_native) {
+					for (; (_loop > 0) && (phase == PHASE_RUN); _loop--) {
+						int		_key = key_status;
+
+						key_status = 0;
+						if ( !updateNative((_loop == 1), touch_status, _key) ) {	// native部稼働
+							finish();
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	/********************
+	    画面サイズ設定
+	 ********************/
+	public void		set_screen(int _width, int _height)
+	{
+		screen_width  = _width;
+		screen_height = _height;
+		synchronized (sync_native) {
+			setScreenNative(_width, _height);
+		}
 	}
 
 
 	/********************
 		タッチイベント
 	 ********************/
-	public boolean	_onTouchEvent(final MotionEvent event)
+	public boolean	onTouchEvent(final MotionEvent event)
 	{
+		if ( phase != PHASE_RUN ) {
+			return	false;
+		}
+
 		int		_action = event.getAction();
 		int		_index, _id;
 
@@ -267,7 +350,7 @@ public class BaseActivity extends FragmentActivity
 			}
 			break;
 		}
-		return true;
+		return	true;
 	}
 
 	/********************
@@ -283,133 +366,174 @@ public class BaseActivity extends FragmentActivity
 	/************
 	    ビュー
 	 ************/
-	class BaseView extends GLSurfaceView
+	class BaseView extends FrameLayout
 	{
-		public BaseView(BaseRenderer _renderer, int[] _attribs)
+		public EGL10		mEgl;
+ 		public EGLDisplay	mEglDisplay;
+ 		public EGLContext	mEglContext;
+		public EGLSurface	mEglSurface;
+		public Object		native_window;
+		private int[]		config_attribs;
+
+		private static final int	EGL_OPENGL_ES2_BIT = 4;
+		private static final int	EGL_CONTEXT_CLIENT_VERSION = 0x3098;
+
+
+		/************************************************
+		    コンストラクタ
+				引数	_kind    = true ：SurfaceView
+						           false：TextureView
+						_attribs = 画面アトリビュート
+		 ************************************************/
+		public BaseView(boolean _kind, int[] _attribs)
 		{
 			super(getApplication());
-			setEGLContextClientVersion(2);					// OpenGL ES 2.0使用
-			setEGLConfigChooser(new ConfigChooser(_attribs));
-			setRenderer(_renderer);
-			setRenderMode(RENDERMODE_WHEN_DIRTY);
+			config_attribs = _attribs;
+
+			if ( _kind ) {					// SurfaceView
+				SurfaceView		_view = new SurfaceView(getApplication());
+
+				_view.getHolder().addCallback(new SurfaceHolder.Callback()
+				{
+					@Override
+				    public void surfaceCreated(SurfaceHolder holder) {}
+
+					@Override synchronized
+				    public void surfaceDestroyed(SurfaceHolder holder)
+					{
+						native_window = null;
+					}
+
+					@Override
+				    public void surfaceChanged(SurfaceHolder _holder, int format, int _width, int _height)
+					{
+						set_screen(_width, _height);
+						set_surface(_holder);
+					}
+				});
+				addView(_view);
+			}
+			else {							// TextureView
+				TextureView		_view = new TextureView(getApplication());
+
+				_view.setSurfaceTextureListener(new TextureView.SurfaceTextureListener()
+				{
+					@Override
+					public void		onSurfaceTextureAvailable(SurfaceTexture _surface, int _width, int _height)
+					{
+						set_screen(_width, _height);
+						set_surface(_surface);
+					}
+
+					@Override
+					public void		onSurfaceTextureSizeChanged(SurfaceTexture surface, int _width, int _height)
+					{
+						set_screen(_width, _height);
+					}
+
+					@Override synchronized
+					public boolean	onSurfaceTextureDestroyed(SurfaceTexture surface)
+					{
+						native_window = null;
+						return	true;
+					}
+
+					@Override
+					public void		onSurfaceTextureUpdated(SurfaceTexture surface) {}
+				});
+				addView(_view);
+			}
 		}
 
-		class ConfigChooser implements GLSurfaceView.EGLConfigChooser
+		/**********
+		    開始
+		 **********/
+		synchronized
+		private void	set_surface(Object _window)
 		{
-			private int[]	attribs;
+			if ( native_window == null ) {
+				native_window = _window;
+				start();
+			}
+		}
 
-			public ConfigChooser(int[] _attribs)
-			{
-				attribs = _attribs;
+		/**********
+		    稼働
+		 **********/
+		private void	swap()
+		{
+			if ( !mEgl.eglMakeCurrent(mEglDisplay, mEglSurface, mEglSurface, mEglContext) ) {
+				throw new RuntimeException("eglMakeCurrent failed");
+			}
+			mEgl.eglSwapBuffers(mEglDisplay, mEglSurface);
+		}
+
+
+		/******************
+		    OpenGL初期化
+		 ******************/
+		private void	initGL()
+		{
+			mEgl = (EGL10)EGLContext.getEGL();
+			mEglDisplay = mEgl.eglGetDisplay(EGL10.EGL_DEFAULT_DISPLAY);
+			if ( mEglDisplay == EGL10.EGL_NO_DISPLAY ) {
+				throw new RuntimeException("eglGetDisplay failed");
+			}
+			if ( !mEgl.eglInitialize(mEglDisplay, new int[2]) ) {
+				throw new RuntimeException("eglInitialize failed");
+			}
+			if ( (search_config(config_attribs) == null) && (search_config(new int[] {EGL10.EGL_NONE}) == null) ) {
+				throw new RuntimeException("eglCreateWindowSurface failed");
 			}
 
-			@Override
-			public EGLConfig	chooseConfig(EGL10 egl, EGLDisplay display)
-			{
-				EGLConfig	config;
+			mEgl.eglMakeCurrent(mEglDisplay, mEglSurface, mEglSurface, mEglContext);
+		}
 
-				config = search(egl, display, attribs);
-				if ( config != null ) {
-					return	config;
-				}
-				return	search(egl, display, new int[] {EGL10.EGL_NONE});
-			}
+		private EGLConfig	search_config(final int[] attribs)
+		{
+			int[]	num_config = new int[1];
 
-			private EGLConfig	search(EGL10 egl, EGLDisplay display, final int[] attribs)
-			{
-				int[]	num_config = new int[1];
-
-				egl.eglChooseConfig(display, attribs, null, 0, num_config);
-				if ( num_config[0] <= 0 ) {
-					return	null;
-				}
-
-				EGLConfig[]		configs = new EGLConfig[num_config[0]];
-
-				egl.eglChooseConfig(display, attribs, configs, num_config[0], num_config);
-
-
-				final int		EGL_CONTEXT_CLIENT_VERSION = 0x3098;
-				final int[]		attrib_list = {EGL_CONTEXT_CLIENT_VERSION, 2,	EGL10.EGL_NONE};
-
-				EGLContext	context;
-				EGLSurface	surface;
-
-				for (EGLConfig config : configs) {
-					context = egl.eglCreateContext(display, config, EGL10.EGL_NO_CONTEXT, attrib_list);		// Context作成チェック
-					if ( (context != null) && (context != EGL10.EGL_NO_CONTEXT) ) {
-						egl.eglDestroyContext(display, context);
-
-						surface = egl.eglCreateWindowSurface(display, config, getHolder(), null);			// Surface作成チェック
-						if ( (surface != null) && (surface != EGL10.EGL_NO_SURFACE) ) {
-							egl.eglDestroySurface(display, surface);
-							return	config;
-						}
-					}
-				}
+			mEgl.eglChooseConfig(mEglDisplay, attribs, null, 0, num_config);
+			if ( num_config[0] <= 0 ) {
 				return	null;
 			}
-		}
 
-		/********************
-			タッチイベント
-		 ********************/
-		@Override
-		public boolean	onTouchEvent(final MotionEvent event)
-		{
-			if ( future == null ) {
-				return	false;
-			}
-			return	_onTouchEvent(event);
-		}
-	}
+			EGLConfig[]		configs = new EGLConfig[num_config[0]];
 
+			mEgl.eglChooseConfig(mEglDisplay, attribs, configs, num_config[0], num_config);
 
-	/****************
-	    レンダラー
-	 ****************/
-	class BaseRenderer implements GLSurfaceView.Renderer
-	{
-		public void	onSurfaceCreated(GL10 _gl, EGLConfig _config) {}
+			final int[]		attrib_list = {EGL_CONTEXT_CLIENT_VERSION, 2,	EGL10.EGL_NONE};
 
-		public void	onSurfaceChanged(GL10 gl, int width, int height)
-		{
-			screen_width  = width;
-			screen_height = height;
-			synchronized (obj_sync)
-			{
-				if ( future == null ) {
-					int		period = initNative((phase == 0), width, height, getAssets());		// native部初期化
-
-					phase = 1;
-					future = executor.scheduleAtFixedRate(new Runnable()	// 定期実行開始
-					{
-						@Override
-						public void	run()
-						{
-							update();
-						}
-					},
-					0, period, TimeUnit.MILLISECONDS);
-				}
-				else {
-					setScreenNative(width, height);												// native部画面サイズ設定
-				}
-			}
-		}
-
-		public void	onDrawFrame(GL10 gl)
-		{
-			synchronized (obj_sync)
-			{
-				if ( (future != null) && (phase > 0) ) {
-					int		_key = key_status;
-
-					key_status = 0;
-					if ( !updateNative(touch_status, _key) ) {				// native部稼働
-						finish();
+			for (EGLConfig config : configs) {
+				mEglContext = mEgl.eglCreateContext(mEglDisplay, config, EGL10.EGL_NO_CONTEXT, attrib_list);	// Context作成
+				if ( (mEglContext != null) && (mEglContext != EGL10.EGL_NO_CONTEXT) ) {
+					mEglSurface = mEgl.eglCreateWindowSurface(mEglDisplay, config, native_window, null);		// Surface作成
+					if ( (mEglSurface != null) && (mEglSurface != EGL10.EGL_NO_SURFACE) ) {
+						return	config;
 					}
+					mEgl.eglDestroyContext(mEglDisplay, mEglContext);
 				}
+			}
+			return	null;
+		}
+
+		/****************
+		    OpenGL終了
+		 ****************/
+		private void	quitGL()
+		{
+			if ( mEglContext != EGL10.EGL_NO_CONTEXT ) {
+				mEgl.eglMakeCurrent(mEglDisplay, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_CONTEXT);
+				mEgl.eglDestroyContext(mEglDisplay, mEglContext);
+				mEglContext	= EGL10.EGL_NO_CONTEXT;
+			}
+			if ( mEglSurface != EGL10.EGL_NO_SURFACE ) {
+				mEgl.eglDestroySurface(mEglDisplay, mEglSurface);
+				mEglSurface = EGL10.EGL_NO_SURFACE;
+			}
+			if ( mEglDisplay != EGL10.EGL_NO_DISPLAY ) {
+				mEgl.eglTerminate(mEglDisplay);
+				mEglDisplay = EGL10.EGL_NO_DISPLAY;
 			}
 		}
 	}

@@ -25,28 +25,28 @@ u32				Renderer::prim_p;
 GLubyte			Renderer::screen_color[4*4];				// 画面描画カラー
 int				Renderer::fade_bright;						// 画面の明るさ
 int				Renderer::fade_speed;						// フェードの速さ
+Bool			Renderer::draw_flag;						// 描画フラグ
 
 
-/************************************************
+/******************************************
     初期化
-		引数	width, height = 端末画面サイズ
- ************************************************/
-void	Renderer::init(int width, int height)
+		引数	init_flag = 初期化フラグ
+ ******************************************/
+void	Renderer::init(Bool init_flag)
 {
 	initShader();													// シェーダ初期化
 	frame_buffer = new FrameBuffer(LIMIT_WIDTH, LIMIT_HEIGHT);		// フレームバッファ作成
-
-	if ( width > 0 ) {
-		set_screen(width, height);									// 画面サイズ設定
-		memset(screen_color, 0xff, 4*4);							// スクリーン描画カラー初期化
-		fade_bright	= BRIGHT_INIT;									// 画面の明るさ
-		fade_speed	= 0;											// フェードの速さ
-	}
 
 	prim_buffer = (u8*)memalign(4, PRIM_BUF_SIZE);					// プリミティブ用汎用バッファ
 	prim_p = 0;
 
 	TexCache::init();												// テクスチャキャッシュ初期化
+
+	if ( init_flag ) {
+		memset(screen_color, 0xff, 4*4);							// スクリーン描画カラー初期化
+		fade_bright	= BRIGHT_INIT;									// 画面の明るさ
+		fade_speed	= 0;											// フェードの速さ
+	}
 }
 
 /************************************************
@@ -238,11 +238,14 @@ void	ShaderProgram::quit(void)
 }
 
 
-/********************
+/************************************
     稼働（前処理）
- ********************/
-void	Renderer::update(void)
+		引数	_draw = 描画フラグ
+ ************************************/
+void	Renderer::update(Bool _draw)
 {
+	draw_flag = _draw;					// 描画フラグ
+
 	current_shader		= NULL;
 	current_texture		= 0;
 	current_color		= NULL;
@@ -317,18 +320,20 @@ void	Renderer::draw(void)
 				 1.0f,  1.0f,
 			};
 
-	ShaderProgram*	_shader = use_shader(SHADER_TEXTURE);
+	if ( draw_flag ) {
+		ShaderProgram*	_shader = use_shader(SHADER_TEXTURE);
 
-	// フレームバッファテクスチャ描画
-	glViewport(limit_rect.x, limit_rect.y, limit_rect.w, limit_rect.h);
-	glUniformMatrix4fv(_shader->projection, 1, GL_FALSE, _projection);
-	glVertexAttribPointer(_shader->position, 2, GL_FLOAT, GL_FALSE, 0, _vertices);
-	glVertexAttribPointer(_shader->texcoord, 2, GL_FLOAT, GL_FALSE, 0, _texcoords);
-	glVertexAttribPointer(_shader->color, 4, GL_UNSIGNED_BYTE, GL_TRUE, 0, screen_color);
-	glBindTexture(GL_TEXTURE_2D, frame_buffer->texture);
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	current_shader->unuse();
-	glFlush();
+		// フレームバッファテクスチャ描画
+		glViewport(limit_rect.x, limit_rect.y, limit_rect.w, limit_rect.h);
+		glUniformMatrix4fv(_shader->projection, 1, GL_FALSE, _projection);
+		glVertexAttribPointer(_shader->position, 2, GL_FLOAT, GL_FALSE, 0, _vertices);
+		glVertexAttribPointer(_shader->texcoord, 2, GL_FLOAT, GL_FALSE, 0, _texcoords);
+		glVertexAttribPointer(_shader->color, 4, GL_UNSIGNED_BYTE, GL_TRUE, 0, screen_color);
+		glBindTexture(GL_TEXTURE_2D, frame_buffer->texture);
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		current_shader->unuse();
+		glFlush();
+	}
 }
 
 /************************************
