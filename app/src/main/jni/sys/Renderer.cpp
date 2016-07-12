@@ -32,15 +32,15 @@ Bool			Renderer::draw_flag;						// 描画フラグ
     初期化
 		引数	init_flag = 初期化フラグ
  ******************************************/
-void	Renderer::init(Bool init_flag)
+void	Renderer::create(Bool init_flag)
 {
-	initShader();													// シェーダ初期化
+	create_shader();												// シェーダ初期化
 	frame_buffer = new FrameBuffer(LIMIT_WIDTH, LIMIT_HEIGHT);		// フレームバッファ作成
 
 	prim_buffer = (u8*)memalign(4, PRIM_BUF_SIZE);					// プリミティブ用汎用バッファ
 	prim_p = 0;
 
-	TexCache::init();												// テクスチャキャッシュ初期化
+	TexCache::create();												// テクスチャキャッシュ初期化
 
 	if ( init_flag ) {
 		memset(screen_color, 0xff, 4*4);							// スクリーン描画カラー初期化
@@ -76,7 +76,7 @@ void	Renderer::set_screen(int width, int height)
 /********************
     シェーダ初期化
  ********************/
-void	Renderer::initShader(void)
+void	Renderer::create_shader(void)
 {
 	shader = new ShaderProgram[SHADER_MAX];
 
@@ -96,11 +96,11 @@ void	Renderer::initShader(void)
 		char	gFragmentShader[] = 				// フラグメントシェーダプログラム
 					"precision mediump float;"
 					"varying vec4 vColor;"
- 					"void main() {"
+					"void main() {"
 						"gl_FragColor = vColor;"
 					"}";
 
-		shader[SHADER_PLAIN].init(gVertexShader, gFragmentShader);
+		shader[SHADER_PLAIN].create(gVertexShader, gFragmentShader);
 	}
 
 	{						// SHADER_TEXTURE（テクスチャ有り）
@@ -124,11 +124,11 @@ void	Renderer::initShader(void)
 					"varying vec4 vColor;"
 					"varying vec2 vTexcoord;"
 					"uniform sampler2D texture;"
- 					"void main() {"
+					"void main() {"
 						"gl_FragColor = texture2D(texture, vTexcoord)*vColor;"
 					"}";
 
-		shader[SHADER_TEXTURE].init(gVertexShader, gFragmentShader);
+		shader[SHADER_TEXTURE].create(gVertexShader, gFragmentShader);
 	}
 }
 
@@ -137,24 +137,24 @@ void	Renderer::initShader(void)
 		引数	v_shader = 頂点シェーダ
 				f_shader = フラグメントシェーダ
  *************************************************/
-void	ShaderProgram::init(GLuint v_shader, GLuint f_shader)
+void	ShaderProgram::create(GLuint v_shader, GLuint f_shader)
 {
-	program = glCreateProgram();								// プログラムオブジェクト作成
+	program = glCreateProgram();									// プログラムオブジェクト作成
 	assert(program != 0);
-	glAttachShader(program, v_shader);							// 頂点シェーダアタッチ
-	glAttachShader(program, f_shader);							// フラグメントシェーダアタッチ
+	glAttachShader(program, v_shader);								// 頂点シェーダアタッチ
+	glAttachShader(program, f_shader);								// フラグメントシェーダアタッチ
 
     GLint	_linked = GL_FALSE;
 
-	glLinkProgram(program);										// リンク
-	glGetProgramiv(program, GL_LINK_STATUS, &_linked);			// リンク結果取得
-	if ( !_linked ) {											// リンク失敗
+	glLinkProgram(program);											// リンク
+	glGetProgramiv(program, GL_LINK_STATUS, &_linked);				// リンク結果取得
+	if ( !_linked ) {												// リンク失敗
 		GLchar*	_buf;
 		GLint	_len;
 
 		glGetProgramiv(program, GL_INFO_LOG_LENGTH, &_len);
 		if ( (_len > 0) && (_buf = new GLchar[_len]) ) {
-			glGetProgramInfoLog(program, _len, NULL, _buf);		// エラーログ取得
+			glGetProgramInfoLog(program, _len, NULL, _buf);			// エラーログ取得
 			LOGE("Could not link program:\n%s\n", _buf);
 			delete[]	_buf;
 		}
@@ -170,14 +170,14 @@ void	ShaderProgram::init(GLuint v_shader, GLuint f_shader)
 	texcoord	= glGetAttribLocation(program, "texcoord");			// テクスチャUV座標
 }
 
-void	ShaderProgram::init(char const* v_source, char const* f_source)
+void	ShaderProgram::create(char const* v_source, char const* f_source)
 {
 	GLuint	vert_shader, frag_shader;
 
-	vert_shader = loadShader(GL_VERTEX_SHADER, v_source);			// 頂点シェーダ
-	frag_shader = loadShader(GL_FRAGMENT_SHADER, f_source);			// フラグメントシェーダ
+	vert_shader = load_shader(GL_VERTEX_SHADER, v_source);			// 頂点シェーダ
+	frag_shader = load_shader(GL_FRAGMENT_SHADER, f_source);		// フラグメントシェーダ
 
-	init(vert_shader, frag_shader);
+	create(vert_shader, frag_shader);
 
 	glDeleteShader(vert_shader);
 	glDeleteShader(frag_shader);
@@ -189,7 +189,7 @@ void	ShaderProgram::init(char const* v_source, char const* f_source)
 				source = プログラムソース
 		戻り値	シェーダオブジェクト
  *******************************************/
-GLuint	ShaderProgram::loadShader(GLenum type, const char* source)
+GLuint	ShaderProgram::load_shader(GLenum type, const char* source)
 {
     GLuint	_shader = glCreateShader(type);						// シェーダオブジェクト作成
     GLint	_compiled = 0;
@@ -218,7 +218,7 @@ GLuint	ShaderProgram::loadShader(GLenum type, const char* source)
 /**********
     終了
  **********/
-void	Renderer::quit(void)
+void	Renderer::release(void)
 {
 	if ( prim_buffer ) {
 		free(prim_buffer);							// プリミティブ用汎用バッファ
@@ -226,10 +226,10 @@ void	Renderer::quit(void)
 		delete		frame_buffer;					// フレームバッファ削除
 		delete[]	shader;							// シェーダ削除
 	}
-	TexCache::quit();								// テクスチャキャッシュ削除
+	TexCache::release();							// テクスチャキャッシュ削除
 }
 
-void	ShaderProgram::quit(void)
+void	ShaderProgram::release(void)
 {
 	if ( program && Renderer::is_active() ) {
 		glDeleteProgram(program);
@@ -314,10 +314,10 @@ void	Renderer::draw(void)
 	static const
 	GLfloat	_vertices[] =
 			{
-				-1.0f, -1.0f,
-				 1.0f, -1.0f,
 				-1.0f,  1.0f,
 				 1.0f,  1.0f,
+				-1.0f, -1.0f,
+				 1.0f, -1.0f,
 			};
 
 	if ( draw_flag ) {
@@ -356,47 +356,44 @@ ShaderProgram*	Renderer::use_shader(ShaderProgram* _sd)
 void	ShaderProgram::use(const GLfloat* mat_projection)
 {
 	glUseProgram(program);
-	if ( (projection != GL_INVALID_OPERATION) && mat_projection ) {
+	if ( (projection >= 0) && mat_projection ) {
 		glUniformMatrix4fv(projection, 1, GL_FALSE, mat_projection);
 	}
-	if ( position != GL_INVALID_OPERATION ) {
+	if ( position >= 0 ) {
 		glEnableVertexAttribArray(position);
 	}
-	if ( color != GL_INVALID_OPERATION ) {
+	if ( color >= 0 ) {
 		glEnableVertexAttribArray(color);
 	}
-	if ( texcoord != GL_INVALID_OPERATION ) {
+	if ( texcoord >= 0 ) {
 		glEnableVertexAttribArray(texcoord);
-		glEnable(GL_TEXTURE_2D);
 		glActiveTexture(GL_TEXTURE0);
-	}
-	else {
-		glDisable(GL_TEXTURE_2D);
 	}
 	glFlush();
 }
 
 void	ShaderProgram::unuse(void)
 {
-	if ( texcoord != GL_INVALID_OPERATION ) {
+	if ( texcoord >= 0 ) {
 		glDisableVertexAttribArray(texcoord);
 	}
-	if ( color != GL_INVALID_OPERATION ) {
+	if ( color >= 0 ) {
 		glDisableVertexAttribArray(color);
 	}
-	if ( position != GL_INVALID_OPERATION ) {
+	if ( position >= 0 ) {
 		glDisableVertexAttribArray(position);
 	}
 }
 
-/**********************************************
+/*************************************************
     テクスチャ使用
-		引数	tex = テクスチャオブジェクト
- **********************************************/
-void	Renderer::bind_texture(GLuint tex)
+		引数	target = テクスチャ種類
+				tex    = テクスチャオブジェクト
+ *************************************************/
+void	Renderer::bind_texture(GLenum target, GLuint tex)
 {
 	if ( tex != current_texture ) {
-		glBindTexture(GL_TEXTURE_2D, tex);
+		glBindTexture(target, tex);
 		current_texture = tex;
 	}
 }

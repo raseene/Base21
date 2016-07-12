@@ -16,9 +16,14 @@ namespace sys
 		引数	_width  = 幅
 				_height = 高さ
  ********************************/
-void	FrameBuffer::make(int _width, int _height)
+void	FrameBuffer::create(int _width, int _height)
 {
-	clear();
+	if ( frame_buffer ) {
+		if ( (width == _width) && (height == _height) ) {
+			return;
+		}
+		release();
+	}
 
 	glGenFramebuffers(1, &frame_buffer);					// フレームバッファオブジェクト作成
 	glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer);
@@ -26,7 +31,7 @@ void	FrameBuffer::make(int _width, int _height)
 	format	= FORMAT_RGB;			// テクスチャフォーマット
 	width	= _width;				// 幅
 	height	= _height;				// 高さ
-	Texture::make(NULL);			// テクスチャ作成
+	Texture::create(NULL);			// テクスチャ作成
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);	// フレームバッファにアタッチ
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -35,7 +40,7 @@ void	FrameBuffer::make(int _width, int _height)
 		mat_projection[i] = 0.0f;
 	}
 	mat_projection[0]  =  2.0f/width;
-	mat_projection[5]  = -2.0f/height;
+	mat_projection[5]  =  2.0f/height;
 	mat_projection[10] =  1.0f;
 	mat_projection[15] =  1.0f;
 }
@@ -43,14 +48,14 @@ void	FrameBuffer::make(int _width, int _height)
 /**********
     削除
  **********/
-void	FrameBuffer::clear(void)
+void	FrameBuffer::release(void)
 {
 	if ( frame_buffer ) {
 		if ( Renderer::is_active() ) {
 			glDeleteFramebuffers(1, &frame_buffer);
 		}
 		frame_buffer = 0;
-		Texture::clear();
+		Texture::release();
 	}
 }
 
@@ -61,7 +66,7 @@ void	FrameBuffer::bind(void)
 {
 	if ( frame_buffer == 0 ) {
 		assert(width > 0);
-		make(width, height);								// 再作成
+		create(width, height);								// 再作成
 	}
 
 	glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer);

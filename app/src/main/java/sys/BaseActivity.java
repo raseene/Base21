@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.AssetManager;
 import android.graphics.SurfaceTexture;
+import android.opengl.GLES20;
 import android.os.Build;
 import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
@@ -41,29 +42,29 @@ public class BaseActivity extends FragmentActivity implements Runnable
     }
 
 
-	private final static int	NATIVE_PRIORITY	= android.os.Process.THREAD_PRIORITY_MORE_FAVORABLE;		// nativeスレッド優先度
+	private final static int	NATIVE_PRIORITY = android.os.Process.THREAD_PRIORITY_MORE_FAVORABLE;		// nativeスレッド優先度
 
 	public final static int		KEY_BACK = 1;					// バックキー
-	public final static int		KEY_YES	 = 2;					// ダイアログ用
+	public final static int		KEY_YES  = 2;					// ダイアログ用
 	public final static int		KEY_NO   = 3;
 
-	private final static int	PHASE_RUN      = 0;				// 実行中
-	private final static int	PHASE_INIT     = 1;				// 初期化
-	private final static int	PHASE_CONTINUE = 2;				// 再開
-	private final static int	PHASE_STOP     = 3;				// 中断
-	private final static int	PHASE_FINISH   = 4;				// 終了
+	protected final static int	PHASE_RUN      = 0;				// 実行中
+	protected final static int	PHASE_INIT     = 1;				// 初期化
+	protected final static int	PHASE_CONTINUE = 2;				// 再開
+	protected final static int	PHASE_STOP     = 3;				// 中断
+	protected final static int	PHASE_FINISH   = 4;				// 終了
 
 
 	protected FrameLayout	base_layout;						// ベースレイアウト
 	protected BaseView		base_view;							// ビュー
-	private int				phase;								// 実行段階
+	protected int			phase;								// 実行段階
 	protected int			screen_width, screen_height;		// 画面の大きさ
-	private final Object	sync_native = new Object();
+	protected final Object	sync_native = new Object();
 
 	private ScheduledExecutorService	executor;				// 定期実行管理
 	private ScheduledFuture<?>			future;
 	private long			time0, time1;
-	private int				frame_rate;							// フレームレート
+	protected int			frame_rate;							// フレームレート
 
 	private short[]			touch_status = new short[5*3];		// タッチパネル状態
 	protected int			key_status = 0;						// キー入力状態
@@ -309,7 +310,7 @@ public class BaseActivity extends FragmentActivity implements Runnable
 	/********************
 		タッチイベント
 	 ********************/
-	public boolean	onTouchEvent(final MotionEvent event)
+	public boolean	_onTouchEvent(final MotionEvent event)
 	{
 		if ( phase != PHASE_RUN ) {
 			return	false;
@@ -360,6 +361,30 @@ public class BaseActivity extends FragmentActivity implements Runnable
 	public void		onBackPressed()
 	{
 		key_status = KEY_BACK;
+	}
+
+
+	/**********************
+	    グラフィック取得
+	 **********************/
+	public EGL10	getEgl()
+	{
+		return	base_view.mEgl;
+	}
+
+	public EGLDisplay	getEglDisplay()
+	{
+		return	base_view.mEglDisplay;
+	}
+
+	public EGLContext	getEglContext()
+	{
+		return	base_view.mEglContext;
+	}
+
+	public EGLSurface	getEglSurface()
+	{
+		return	base_view.mEglSurface;
 	}
 
 
@@ -468,6 +493,15 @@ public class BaseActivity extends FragmentActivity implements Runnable
 			mEgl.eglSwapBuffers(mEglDisplay, mEglSurface);
 		}
 
+		/********************
+			タッチイベント
+		 ********************/
+		@Override
+		public boolean	onTouchEvent(final MotionEvent event)
+		{
+			return	_onTouchEvent(event);
+		}
+
 
 		/******************
 		    OpenGL初期化
@@ -522,6 +556,13 @@ public class BaseActivity extends FragmentActivity implements Runnable
 		 ****************/
 		private void	quitGL()
 		{
+			if ( !mEgl.eglMakeCurrent(mEglDisplay, mEglSurface, mEglSurface, mEglContext) ) {
+				throw new RuntimeException("eglMakeCurrent failed");
+			}
+			GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+			mEgl.eglSwapBuffers(mEglDisplay, mEglSurface);
+
 			if ( mEglContext != EGL10.EGL_NO_CONTEXT ) {
 				mEgl.eglMakeCurrent(mEglDisplay, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_CONTEXT);
 				mEgl.eglDestroyContext(mEglDisplay, mEglContext);

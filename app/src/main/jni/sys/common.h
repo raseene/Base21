@@ -27,11 +27,27 @@ typedef int					Bool;
 struct Rect
 {
 	float	x, y, w, h;
+
+	void	set(float _x, float _y, float _w, float _h)
+			{
+				x = _x;
+				y = _y;
+				w = _w;
+				h = _h;
+			}
 };
 
 struct SRect
 {
 	short	x, y, w, h;
+
+	void	set(short _x, short _y, short _w, short _h)
+			{
+				x = _x;
+				y = _y;
+				w = _w;
+				h = _h;
+			}
 };
 
 // ç¿ïW

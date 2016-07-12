@@ -1,15 +1,15 @@
 apply plugin: 'com.android.application'
 
 android {
-	compileSdkVersion 22
-	buildToolsVersion "23.0.2"
+	compileSdkVersion 24
+	buildToolsVersion "23.0.3"
 
 	defaultConfig {
 		applicationId "com.example.base"
 		versionCode 1
 		versionName '1.0'
 		minSdkVersion 9
-		targetSdkVersion 22
+		targetSdkVersion 24
 		ndk {
 			moduleName "native"
 		}
@@ -25,8 +25,8 @@ android {
 	}
 	buildTypes {
 		debug {
-			applicationIdSuffix = ".debug"
-			versionNameSuffix = "d"
+			applicationIdSuffix = '.debug'
+			versionNameSuffix = 'd'
 			debuggable true
 			jniDebuggable true
 		}
@@ -52,7 +52,7 @@ android {
 }
 
 dependencies {
-	compile 'com.android.support:support-v4:22.2.1'
+	compile 'com.android.support:support-v4:24.0.0'
 }
 
 

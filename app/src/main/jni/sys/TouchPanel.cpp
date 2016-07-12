@@ -16,7 +16,7 @@ TouchManager*	TouchPanel;
 /************
     初期化
  ************/
-void	TouchManager::init_manager(void)
+void	TouchManager::create_manager(void)
 {
 	TouchPanel = new TouchManager[TOUCH_MAX];
 }
@@ -24,7 +24,7 @@ void	TouchManager::init_manager(void)
 /**********
     終了
  **********/
-void	TouchManager::quit_manager(void)
+void	TouchManager::release_manager(void)
 {
 	delete[]	TouchPanel;
 }

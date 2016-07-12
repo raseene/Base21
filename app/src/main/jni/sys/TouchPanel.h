@@ -20,8 +20,8 @@ class TouchManager
 {
 public :
 
-	static void		init_manager(void);					// 管理システム初期化
-	static void		quit_manager(void);					// 管理システム終了
+	static void		create_manager(void);				// 管理システム初期化
+	static void		release_manager(void);				// 管理システム終了
 	static void		update_manager(short const*);		// 管理システム稼働
 
 private :

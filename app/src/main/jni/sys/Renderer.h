@@ -29,19 +29,19 @@ struct ShaderProgram
 		}
 		ShaderProgram(char const* v_source, char const* f_source)
 		{
-			init(v_source, f_source);
+			create(v_source, f_source);
 		}
 		~ShaderProgram()					// デストラクタ
 		{
-			quit();
+			release();
 		}
-	void	init(GLuint, GLuint);			// 初期化
-	void	init(char const*, char const*);
+	void	create(GLuint, GLuint);			// 初期化
+	void	create(char const*, char const*);
 	void	use(const GLfloat*);			// 使用
 	void	unuse(void);
-	void	quit(void);						// 終了
+	void	release(void);					// 終了
 
-	static GLuint	loadShader(GLenum, const char*);	// シェーダ作成
+	static GLuint	load_shader(GLenum, const char*);		// シェーダ作成
 };
 
 /**************
@@ -62,7 +62,7 @@ class Renderer
 	static int		fade_bright;						// 画面の明るさ
 	static int		fade_speed;							// フェードの速さ
 
-	static void		initShader(void);					// シェーダ初期化
+	static void		create_shader(void);				// シェーダ初期化
 
 public :
 
@@ -81,9 +81,9 @@ enum
 	static GLfloat const*	mat_projection;				// 透視変換行列
 	static Bool				draw_flag;					// 描画フラグ
 
-	static void		init(Bool);							// 初期化
+	static void		create(Bool);						// 初期化
 	static void		set_screen(int, int);				// 画面サイズ設定
-	static void		quit(void);							// 終了
+	static void		release(void);						// 終了
 	static void		update(Bool);						// 稼働（前処理）
 	static void		draw(void);							// 描画（後処理）
 	static ShaderProgram*	use_shader(ShaderProgram*);	// シェーダ使用
@@ -91,10 +91,28 @@ enum
 							{
 								return	use_shader(&shader[_n]);
 							}
-	static void		bind_texture(GLuint);				// テクスチャ使用
+	static void		bind_texture(GLenum, GLuint);		// テクスチャ使用
+	static void		bind_texture(GLuint tex)
+					{
+						bind_texture(GL_TEXTURE_2D, tex);
+					}
 	static void		set_color(GLubyte const*);			// カラー設定
+	static void		set_color(u32 const* _color)
+					{
+						set_color((GLubyte const*)_color);
+					}
 	static void		set_texcoord(GLfloat const*);		// テクスチャUV座標設定
 	static void		set_vertex(GLfloat const*);			// 頂点座標設定
+	static void		set_vertex(GLfloat const* _vertex, GLfloat const* _coord, GLubyte const* _color)
+					{
+						set_vertex(_vertex);
+						set_texcoord(_coord);
+						set_color(_color);
+					}
+	static void		set_vertex(GLfloat const* _vertex, GLfloat const* _coord, u32 const* _color)
+					{
+						set_vertex(_vertex, _coord, (GLubyte const*)_color);
+					}
 	static void*	get_prim_buffer(u32);				// プリミティブバッファ取得
 	static Bool		is_active(void)						// 稼働中か
 					{

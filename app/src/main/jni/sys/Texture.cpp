@@ -6,6 +6,7 @@
 
 #include "Texture.h"
 #include "Renderer.h"
+#include "Sprite.h"
 
 #include <libpng/jni/png.h>
 
@@ -17,9 +18,9 @@ namespace sys
     作成
 		引数	data = テクスチャデータ
  *****************************************/
-void	Texture::make(const u8* data)
+void	Texture::create(const u8* data)
 {
-	clear();
+	release();
 
 	glGenTextures(1, &texture);					// テクスチャオブジェクト作成
 	glBindTexture(GL_TEXTURE_2D, texture);
@@ -53,7 +54,7 @@ void	Texture::make(const u8* data)
 /**********
     削除
  **********/
-void	Texture::clear(void)
+void	Texture::release(void)
 {
 	if ( texture ) {
 		if ( Renderer::is_active() ) {
@@ -93,7 +94,7 @@ void	Texture::load(const u8* _data)
 			format	= *((const short*)_data + 1);
 			width	= *((const short*)_data + 2);
 			height	= *((const short*)_data + 3);
-			make((const u8*)_data + 8);
+			create((const u8*)_data + 8);
 		}
 		else {
 			assert(FALSE);
@@ -177,7 +178,7 @@ void	Texture::load_png(const u8* data)
 	}
 	png_read_image(_png, _rows);
 
-	make(_buf);				// テクスチャ作成
+	create(_buf);				// テクスチャ作成
 
 	png_destroy_read_struct(&_png, &_info, NULL);
 	free(_buf);
@@ -193,7 +194,7 @@ void	Texture::load_pkm(const u8* data)
 	format	= FORMAT_ETC;
 	width	= (u16)(((u16)data[8] << 8) | data[9]);
 	height	= (u16)(((u16)data[10] << 8) | data[11]);
-	make(data + 0x10);
+	create(data + 0x10);
 }
 
 
@@ -204,7 +205,7 @@ u32			TexCache::cache_mem_size;		// キャッシュ使用メモリサイズ
 /**********************
     キャッシュ初期化
  **********************/
-void	TexCache::init(void)
+void	TexCache::create(void)
 {
 	cache			= new TexCache *[TEX_CACHE_NUM];		// キャッシュ作成
 	cache_num		= 0;
@@ -214,7 +215,7 @@ void	TexCache::init(void)
 /********************
     キャッシュ削除
  ********************/
-void	TexCache::quit(void)
+void	TexCache::release(void)
 {
 	if ( cache ) {
 		for (int i = 0; i < cache_num; i++) {				// テクスチャ削除
@@ -323,6 +324,19 @@ TexCache::TexCache(short _type, const void* _data)
 		mem_size = width*height/2;
 		break;
 	}
+}
+
+
+/***********************************
+    描画
+		引数	_x, _y = 描画位置
+ ***********************************/
+void	Texture::draw(float _x, float _y)
+{
+	Sprite	_spr;
+
+	_spr.set(this);
+	_spr.draw(_x, _y);
 }
 
 }

@@ -17,7 +17,7 @@ float			SoundPlayer::master_volume;				// マスター音量
 /********************
     エンジン初期化
  ********************/
-void	SoundPlayer::init_engine(void)
+void	SoundPlayer::create_engine(void)
 {
 	SLresult	result;
 
@@ -36,7 +36,7 @@ void	SoundPlayer::init_engine(void)
 /******************
     エンジン終了
  ******************/
-void	SoundPlayer::quit_engine(void)
+void	SoundPlayer::release_engine(void)
 {
 	if ( engineObject ) {
 		(*engineObject)->Destroy(engineObject);
@@ -617,16 +617,16 @@ SoundPlayer*	SoundManager::player = NULL;			// プレイヤー
 /************************
     サウンド管理初期化
  ************************/
-void	SoundManager::init(void)
+void	SoundManager::create(void)
 {
-	SoundPlayer::init_engine();							// サウンドエンジン初期化
+	SoundPlayer::create_engine();						// サウンドエンジン初期化
 	player = new SoundPlayer[SOUND_CHANNEL_MAX];		// プレイヤー
 }
 
 /**********
     終了
  **********/
-void	SoundManager::quit(void)
+void	SoundManager::release(void)
 {
 	{				// コマンド停止
 		JNIEnv*		env;
@@ -658,7 +658,7 @@ error :
 		delete[]	player;
 		player = NULL;
 	}
-	SoundPlayer::quit_engine();							// サウンドエンジン終了
+	SoundPlayer::release_engine();						// サウンドエンジン終了
 }
 
 // サウンドコマンド

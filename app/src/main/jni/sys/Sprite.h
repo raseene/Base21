@@ -50,6 +50,12 @@ enum
 	void	set(short, short, int _origin = X_CENTER | Y_CENTER);						// 設定（テクスチャ無し）
 	void	set(short, const void*, SRect const*, int _origin = X_CENTER | Y_CENTER);	// 設定（リソース指定）
 	void	set(short, const void*, int _origin = X_CENTER | Y_CENTER);
+	void	set_size(short _w, short _h, int _origin = X_CENTER | Y_CENTER)				// サイズ設定
+			{
+				width  = _w;
+				height = _h;
+				set_origin(_origin);
+			}
 	void	set_origin(int _origin = X_CENTER | Y_CENTER);								// 原点位置設定
 	void	set_shader(int _shader)														// シェーダ設定
 			{

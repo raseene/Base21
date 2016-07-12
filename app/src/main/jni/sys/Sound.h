@@ -63,8 +63,8 @@ public :
 	static SLEngineItf	engineEngine;				// インタフェース
 	static float		master_volume;				// マスター音量
 
-	static void		init_engine(void);				// 初期化
-	static void		quit_engine(void);				// 終了
+	static void		create_engine(void);			// 初期化
+	static void		release_engine(void);			// 終了
 	static Bool		set_master_volume(float);		// マスター音量設定
 
 
@@ -136,8 +136,8 @@ class SoundManager
 
 public :
 
-	static void		init(void);					// 初期化
-	static void		quit(void);					// 終了
+	static void		create(void);				// 初期化
+	static void		release(void);				// 終了
 	static void		update(void);				// 稼働
 
 	static void		play(int, const void*, u32, int _loop = 1, float _vol = 1.0f);			// 再生

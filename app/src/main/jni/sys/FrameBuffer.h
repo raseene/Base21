@@ -24,19 +24,19 @@ public :
 		}
 		FrameBuffer(int _w, int _h)
 		{
-			make(_w, _h);
+			create(_w, _h);
 		}
 		~FrameBuffer()					// デストラクタ
 		{
-			clear();
+			release();
 		}
 
-	void	make(int, int);				// 作成
-	void	make(void)
+	void	create(int, int);			// 作成
+	void	create(void)
 			{
-				make(width, height);
+				create(width, height);
 			}
-	void	clear(void);				// 削除
+	void	release(void);				// 削除
 	void	bind(void);					// 使用
 };
 

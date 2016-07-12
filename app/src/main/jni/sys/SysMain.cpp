@@ -37,8 +37,8 @@ JNIEXPORT int JNICALL	Java_sys_BaseActivity_initNative(JNIEnv* env, jobject, jbo
 	asset_manager = AAssetManager_fromJava(env, mgr);		// asset読み込みマネージャー
 	assert(asset_manager != NULL);
 
-	Renderer::init(init_flag);					// 描画管理初期化
-	TouchManager::init_manager();				// タッチパネル管理初期化
+	Renderer::create(init_flag);				// 描画管理初期化
+	TouchManager::create_manager();				// タッチパネル管理初期化
 
 	if ( init_flag ) {
 		timespec	_t;
@@ -46,7 +46,7 @@ JNIEXPORT int JNICALL	Java_sys_BaseActivity_initNative(JNIEnv* env, jobject, jbo
 		clock_gettime(CLOCK_REALTIME, &_t);		// 現在時刻取得
 		srand(_t.tv_sec + _t.tv_nsec);			// 乱数初期化
 
-		SoundManager::init();					// サウンド初期化
+		SoundManager::create();					// サウンド初期化
 		common_counter = 0;						// 汎用カウンタ
 		init_app();								// アプリメイン初期化
 		end_flag = FALSE;
@@ -77,7 +77,7 @@ JNIEXPORT void JNICALL	Java_sys_BaseActivity_quitNative(JNIEnv*, jobject)
 	LOGI("quitNative");
 
 	quit_app();									// アプリメイン終了
-	SoundManager::quit();						// サウンド終了
+	SoundManager::release();					// サウンド終了
 	end_flag = TRUE;
 }
 
@@ -88,8 +88,8 @@ JNIEXPORT void JNICALL	Java_sys_BaseActivity_pauseNative(JNIEnv*, jobject)
 {
 	LOGI("pauseNative");
 
-	TouchManager::quit_manager();				// タッチパネル管理終了
-	Renderer::quit();							// 描画管理終了
+	TouchManager::release_manager();			// タッチパネル管理終了
+	Renderer::release();						// 描画管理終了
 	if ( !end_flag ) {
 		pause_app();							// アプリメイン一時停止
 		SoundManager::pause_system();			// サウンド一時停止

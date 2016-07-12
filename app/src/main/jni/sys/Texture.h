@@ -44,14 +44,15 @@ enum
 		}
 		~Texture()							// デストラクタ
 		{
-			clear();
+			release();
 		}
-	void	make(const u8*);				// 作成
-	void	clear(void);					// 削除
+	void	create(const u8*);				// 作成
+	void	release(void);					// 削除
 	void	bind(void);						// 使用
 	void	load(const u8*);				// データ読み込み
 	void	load_png(const u8*);			// PNG読み込み
 	void	load_pkm(const u8*);			// PKM読み込み
+	void	draw(float _x = 0.0f, float _y = 0.0f);		// 描画
 };
 
 
@@ -77,8 +78,8 @@ enum
 	RES_UPDATE	= 0x4000,	// 更新あり
 };
 
-	static void			init(void);							// 初期化
-	static void			quit(void);							// 削除
+	static void			create(void);						// 初期化
+	static void			release(void);						// 削除
 	static Texture*		get_texture(short, const void*);	// テクスチャ取得
 
 	short			type;			// リソース種類
