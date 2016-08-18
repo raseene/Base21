@@ -17,10 +17,10 @@ namespace sys
 struct ShaderProgram
 {
 	GLuint	program;			// プログラムオブジェクト
+	GLint	projection;			// 透視変換
 	GLint	position;			// 座標
 	GLint	color;				// カラー
-	GLuint	projection;			// 透視変換
-	GLuint	texture;			// テクスチャ
+	GLint	texture;			// テクスチャ
 	GLint	texcoord;			// テクスチャUV座標
 
 		ShaderProgram(void)					// コンストラクタ
@@ -41,7 +41,7 @@ struct ShaderProgram
 	void	unuse(void);
 	void	release(void);					// 終了
 
-	static GLuint	load_shader(GLenum, const char*);		// シェーダ作成
+	static GLuint	load_shader(GLenum, const char*);			// シェーダ作成
 };
 
 /**************
@@ -54,13 +54,13 @@ class Renderer
 	static GLuint			current_texture;			// 使用中テクスチャ
 	static GLubyte const*	current_color;				// 設定中カラー
 	static GLfloat const*	current_texcoord;			// 設定中UV座標
+	static GLfloat const*	current_vertex;				// 設定中頂点座標
 
 	static u8*	prim_buffer;							// プリミティブ用汎用バッファ
 	static u32	prim_p;
 
-	static GLubyte	screen_color[4*4];					// 画面描画カラー
-	static int		fade_bright;						// 画面の明るさ
-	static int		fade_speed;							// フェードの速さ
+	static int	fade_bright;							// 画面の明るさ
+	static int	fade_speed;								// フェードの速さ
 
 	static void		create_shader(void);				// シェーダ初期化
 
@@ -71,38 +71,43 @@ enum
 {
 	SHADER_PLAIN	= 0,
 	SHADER_TEXTURE,
+	SHADER_SIMPLE,
 	SHADER_MAX
 };
 
-	static SRect			screen_rect;				// 画面解像度
-	static SRect			limit_rect;					// 表示画面解像度
-	static FrameBuffer*		frame_buffer;				// フレームバッファ
-	static ShaderProgram*	current_shader;				// 使用中シェーダ
-	static GLfloat const*	mat_projection;				// 透視変換行列
-	static Bool				draw_flag;					// 描画フラグ
+	static SRect			screen_rect;						// 画面解像度
+	static SRect			limit_rect;							// 表示画面解像度
+	static FrameBuffer*		frame_buffer;						// フレームバッファ
+	static ShaderProgram*	current_shader;						// 使用中シェーダ
+	static GLfloat const*	mat_projection;						// 透視変換行列
+	static Bool				draw_flag;							// 描画フラグ
 
-	static void		create(Bool);						// 初期化
-	static void		set_screen(int, int);				// 画面サイズ設定
-	static void		release(void);						// 終了
-	static void		update(Bool);						// 稼働（前処理）
-	static void		draw(void);							// 描画（後処理）
-	static ShaderProgram*	use_shader(ShaderProgram*);	// シェーダ使用
+	static void		create(Bool);								// 初期化
+	static void		set_screen(int, int);						// 画面サイズ設定
+	static void		release(void);								// 終了
+	static void		update(Bool);								// 稼働（前処理）
+	static void		draw(void);									// 描画（後処理）
+	static ShaderProgram*	use_shader(ShaderProgram*);			// シェーダ使用
 	static ShaderProgram*	use_shader(int _n)
 							{
 								return	use_shader(&shader[_n]);
 							}
-	static void		bind_texture(GLenum, GLuint);		// テクスチャ使用
+	static void		bind_texture(GLenum, GLuint);				// テクスチャ使用
 	static void		bind_texture(GLuint tex)
 					{
 						bind_texture(GL_TEXTURE_2D, tex);
 					}
-	static void		set_color(GLubyte const*);			// カラー設定
+	static void		set_color(GLubyte const*);					// カラー設定
 	static void		set_color(u32 const* _color)
 					{
 						set_color((GLubyte const*)_color);
 					}
-	static void		set_texcoord(GLfloat const*);		// テクスチャUV座標設定
-	static void		set_vertex(GLfloat const*);			// 頂点座標設定
+	static void		set_color(GLfloat const*);
+	static void		set_color(void);
+	static void		set_texcoord(GLfloat const*);				// テクスチャUV座標設定
+	static void		set_texcoord(void);
+	static void		set_vertex(GLfloat const*);					// 頂点座標設定
+	static void		set_vertex(void);
 	static void		set_vertex(GLfloat const* _vertex, GLfloat const* _coord, GLubyte const* _color)
 					{
 						set_vertex(_vertex);
@@ -113,8 +118,14 @@ enum
 					{
 						set_vertex(_vertex, _coord, (GLubyte const*)_color);
 					}
-	static void*	get_prim_buffer(u32);				// プリミティブバッファ取得
-	static Bool		is_active(void)						// 稼働中か
+	static void		set_vertex(GLfloat const* _vertex, GLfloat const* _coord, GLfloat const* _color)
+					{
+						set_vertex(_vertex);
+						set_texcoord(_coord);
+						set_color(_color);
+					}
+	static void*	get_prim_buffer(u32);						// プリミティブバッファ取得
+	static Bool		is_active(void)								// 稼働中か
 					{
 						return	(Bool)prim_buffer;
 					}

@@ -327,16 +327,36 @@ TexCache::TexCache(short _type, const void* _data)
 }
 
 
-/***********************************
+/*********************************
     描画
-		引数	_x, _y = 描画位置
- ***********************************/
-void	Texture::draw(float _x, float _y)
+		引数	_color = カラー
+ *********************************/
+void	Texture::draw(GLfloat const* _color)
 {
-	Sprite	_spr;
+	Texture::bind();
+	glUniform4fv(Renderer::use_shader(Renderer::SHADER_SIMPLE)->color, 1, _color);
+	Renderer::set_vertex();
+	Renderer::set_texcoord();
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
 
-	_spr.set(this);
-	_spr.draw(_x, _y);
+void	Texture::draw(void)
+{
+	static const
+	GLfloat		_color[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+
+	draw(_color);
+}
+
+void	Texture::draw(u32 _color)
+{
+	GLfloat		_p[4];
+
+	_p[0] = (_color & 0xff)/255.0f;
+	_p[1] = ((_color >> 8) & 0xff)/255.0f;
+	_p[2] = ((_color >> 16) & 0xff)/255.0f;
+	_p[3] = ((_color >> 24) & 0xff)/255.0f;
+	draw(_p);
 }
 
 }

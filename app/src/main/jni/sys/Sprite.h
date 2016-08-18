@@ -26,7 +26,8 @@ enum
 	Y_BOTTOM	= 0x20,			// 下揃え
 };
 
-	static u32 const*	spr_color;		// カラー
+	static GLfloat	spr_vertex[4][XY];			// 頂点
+	static u32		spr_color[4];				// カラー
 
 	static void		set_color(u32 _color = 0xffffffff);		// カラー設定
 	static void		set_color(u8 _r, u8 _g, u8 _b, u8 _a = 0xff)

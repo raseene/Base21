@@ -36,13 +36,12 @@ void	FrameBuffer::create(int _width, int _height)
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	for (int i = 0; i < 4*4; i++) {							// 透視変換行列初期化
+	for (int i = 0; i < 3*3; i++) {							// 透視変換行列初期化
 		mat_projection[i] = 0.0f;
 	}
-	mat_projection[0]  =  2.0f/width;
-	mat_projection[5]  =  2.0f/height;
-	mat_projection[10] =  1.0f;
-	mat_projection[15] =  1.0f;
+	mat_projection[0] = 2.0f/width;
+	mat_projection[4] = 2.0f/height;
+	mat_projection[8] = 1.0f;
 }
 
 /**********
@@ -73,7 +72,7 @@ void	FrameBuffer::bind(void)
 	glViewport(0, 0, width, height);						// ビューポート設定
 	Renderer::mat_projection = mat_projection;				// 透視変換行列設定
 	if ( Renderer::current_shader ) {
-		glUniformMatrix4fv(Renderer::current_shader->projection, 1, GL_FALSE, mat_projection);
+		glUniformMatrix3fv(Renderer::current_shader->projection, 1, GL_FALSE, mat_projection);
 	}
 	glFlush();
 }

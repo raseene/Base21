@@ -11,7 +11,8 @@
 namespace sys
 {
 
-u32 const*	Sprite::spr_color;			// カラー
+GLfloat		Sprite::spr_vertex[4][XY];		// 頂点
+u32			Sprite::spr_color[4];			// カラー
 
 
 /**************************************
@@ -124,35 +125,15 @@ void	Sprite::set_origin(int _origin)
  ***********************************/
 void	Sprite::set_color(u32 _color)
 {
-	if ( _color == 0xffffffff ) {			// デフォルト
-		static const
-		u32		color_white[] =
-				{
-					0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
-				};
-
-		spr_color = color_white;
-	}
-	else if ( (_color != spr_color[0]) || (_color != spr_color[1]) || (_color != spr_color[2]) || (_color != spr_color[3]) ) {
-		u32*	_p = (u32*)Renderer::get_prim_buffer(sizeof(u32)*4);		// カラーバッファ
-
-		_p[0] = _color;
-		_p[1] = _color;
-		_p[2] = _color;
-		_p[3] = _color;
-		spr_color = _p;
-	}
+	spr_color[0] = spr_color[1] = spr_color[2] = spr_color[3] = _color;
 }
 
 void	Sprite::set_color(u32 const* _color)
 {
-	u32*	_p = (u32*)Renderer::get_prim_buffer(sizeof(u32)*4);			// カラーバッファ
-
-	_p[0] = _color[0];
-	_p[1] = _color[1];
-	_p[2] = _color[2];
-	_p[3] = _color[3];
-	spr_color = _p;
+	spr_color[0] = _color[0];
+	spr_color[1] = _color[1];
+	spr_color[2] = _color[2];
+	spr_color[3] = _color[3];
 }
 
 
@@ -183,36 +164,26 @@ void	Sprite::bind_texture(void)
  ***********************************/
 void	Sprite::draw(float _x, float _y)
 {
-	GLfloat*	_vertex = (GLfloat*)Renderer::get_prim_buffer(sizeof(GLfloat)*4*XY);		// 頂点バッファ
+	spr_vertex[0][X] = spr_vertex[2][X] = _x - ox;
+	spr_vertex[0][Y] = spr_vertex[1][Y] = _y - oy;
+	spr_vertex[1][X] = spr_vertex[3][X] = _x + (width - ox);
+	spr_vertex[2][Y] = spr_vertex[3][Y] = _y + (height - oy);
 
-	_vertex[0*XY + X] = _vertex[2*XY + X] = _x - ox;
-	_vertex[0*XY + Y] = _vertex[1*XY + Y] = _y - oy;
-	_vertex[1*XY + X] = _vertex[3*XY + X] = _x + (width - ox);
-	_vertex[2*XY + Y] = _vertex[3*XY + Y] = _y + (height - oy);
-
-	bind_texture();
-	Renderer::set_vertex(_vertex);							// 頂点
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);					// 描画
+	draw(&spr_vertex[0][0]);
 }
 
 void	Sprite::draw(float _x, float _y, float _sx, float _sy)
 {
-	GLfloat*	_vertex = (GLfloat*)Renderer::get_prim_buffer(sizeof(GLfloat)*4*XY);		// 頂点バッファ
+	spr_vertex[0][X] = spr_vertex[2][X] = _x - _sx*ox;
+	spr_vertex[0][Y] = spr_vertex[1][Y] = _y - _sy*oy;
+	spr_vertex[1][X] = spr_vertex[3][X] = _x + _sx*(width - ox);
+	spr_vertex[2][Y] = spr_vertex[3][Y] = _y + _sy*(height - oy);
 
-	_vertex[0*XY + X] = _vertex[2*XY + X] = _x - _sx*ox;
-	_vertex[0*XY + Y] = _vertex[1*XY + Y] = _y - _sy*oy;
-	_vertex[1*XY + X] = _vertex[3*XY + X] = _x + _sx*(width - ox);
-	_vertex[2*XY + Y] = _vertex[3*XY + Y] = _y + _sy*(height - oy);
-
-	bind_texture();
-	Renderer::set_vertex(_vertex);							// 頂点
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);					// 描画
+	draw(&spr_vertex[0][0]);
 }
 
 void	Sprite::draw(float _x, float _y, float _sx, float _sy, float _rot)
 {
-	GLfloat*	_vertex = (GLfloat*)Renderer::get_prim_buffer(sizeof(GLfloat)*4*XY);		// 頂点バッファ
-
 	float	_cos = cosf(_rot), _sin = sinf(_rot),
 			_cx0, _sx0, _cy0, _sy0, _cx1, _sx1, _cy1, _sy1;
 
@@ -221,30 +192,22 @@ void	Sprite::draw(float _x, float _y, float _sx, float _sy, float _rot)
 	_cx1 = _sx*(width - ox); _sx1 = _sin*_cx1; _cx1 *= _cos;
 	_cy1 = _sy*(height - oy); _sy1 = _sin*_cy1; _cy1 *= _cos;
 
-	_vertex[0*XY + X] = _x + _cx0 - _sy0;
-	_vertex[0*XY + Y] = _y + _cy0 + _sx0;
-	_vertex[1*XY + X] = _x + _cx1 - _sy0;
-	_vertex[1*XY + Y] = _y + _cy0 + _sx1;
-	_vertex[2*XY + X] = _x + _cx0 - _sy1;
-	_vertex[2*XY + Y] = _y + _cy1 + _sx0;
-	_vertex[3*XY + X] = _x + _cx1 - _sy1;
-	_vertex[3*XY + Y] = _y + _cy1 + _sx1;
+	spr_vertex[0][X] = _x + _cx0 - _sy0;
+	spr_vertex[0][Y] = _y + _cy0 + _sx0;
+	spr_vertex[1][X] = _x + _cx1 - _sy0;
+	spr_vertex[1][Y] = _y + _cy0 + _sx1;
+	spr_vertex[2][X] = _x + _cx0 - _sy1;
+	spr_vertex[2][Y] = _y + _cy1 + _sx0;
+	spr_vertex[3][X] = _x + _cx1 - _sy1;
+	spr_vertex[3][Y] = _y + _cy1 + _sx1;
 
-	bind_texture();
-	Renderer::set_vertex(_vertex);							// 頂点
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);					// 描画
+	draw(&spr_vertex[0][0]);
 }
 
 void	Sprite::draw(float const* vertex)
 {
-	GLfloat*	_vertex = (GLfloat*)Renderer::get_prim_buffer(sizeof(GLfloat)*4*XY);		// 頂点バッファ
-
-	for (int i = 0; i < 4*XY; i++) {
-		_vertex[i] = vertex[i];
-	}
-
 	bind_texture();
-	Renderer::set_vertex(_vertex);							// 頂点
+	Renderer::set_vertex((GLfloat*)vertex);					// 頂点
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);					// 描画
 }
 

@@ -11,21 +11,21 @@
 namespace sys
 {
 
-ShaderProgram*	Renderer::shader;							// シェーダプログラム
-ShaderProgram*	Renderer::current_shader;					// 使用中シェーダ
-GLfloat const*	Renderer::mat_projection;					// 透視変換行列
-SRect			Renderer::screen_rect;						// 画面解像度
-SRect			Renderer::limit_rect;						// 表示画面解像度
-FrameBuffer*	Renderer::frame_buffer;						// フレームバッファ
-GLuint			Renderer::current_texture;					// 使用中テクスチャ
-GLubyte const*	Renderer::current_color;					// 設定中カラー
-GLfloat const*	Renderer::current_texcoord;					// 設定中UV座標
-u8*				Renderer::prim_buffer = NULL;				// プリミティブ用汎用バッファ
+ShaderProgram*	Renderer::shader;						// シェーダプログラム
+ShaderProgram*	Renderer::current_shader;				// 使用中シェーダ
+GLfloat const*	Renderer::mat_projection;				// 透視変換行列
+SRect			Renderer::screen_rect;					// 画面解像度
+SRect			Renderer::limit_rect;					// 表示画面解像度
+FrameBuffer*	Renderer::frame_buffer = NULL;			// フレームバッファ
+GLuint			Renderer::current_texture;				// 使用中テクスチャ
+GLubyte const*	Renderer::current_color;				// 設定中カラー
+GLfloat const*	Renderer::current_texcoord;				// 設定中UV座標
+GLfloat const*	Renderer::current_vertex;				// 設定中頂点座標
+u8*				Renderer::prim_buffer = NULL;			// プリミティブ用汎用バッファ
 u32				Renderer::prim_p;
-GLubyte			Renderer::screen_color[4*4];				// 画面描画カラー
-int				Renderer::fade_bright;						// 画面の明るさ
-int				Renderer::fade_speed;						// フェードの速さ
-Bool			Renderer::draw_flag;						// 描画フラグ
+int				Renderer::fade_bright;					// 画面の明るさ
+int				Renderer::fade_speed;					// フェードの速さ
+Bool			Renderer::draw_flag;					// 描画フラグ
 
 
 /******************************************
@@ -37,13 +37,12 @@ void	Renderer::create(Bool init_flag)
 	create_shader();												// シェーダ初期化
 	frame_buffer = new FrameBuffer(LIMIT_WIDTH, LIMIT_HEIGHT);		// フレームバッファ作成
 
-	prim_buffer = (u8*)memalign(4, PRIM_BUF_SIZE);					// プリミティブ用汎用バッファ
+	prim_buffer = (PRIM_BUF_SIZE > 0) ? (u8*)memalign(4, PRIM_BUF_SIZE) : NULL;			// プリミティブ用汎用バッファ
 	prim_p = 0;
 
 	TexCache::create();												// テクスチャキャッシュ初期化
 
 	if ( init_flag ) {
-		memset(screen_color, 0xff, 4*4);							// スクリーン描画カラー初期化
 		fade_bright	= BRIGHT_INIT;									// 画面の明るさ
 		fade_speed	= 0;											// フェードの速さ
 	}
@@ -83,12 +82,12 @@ void	Renderer::create_shader(void)
 	{						// SHADER_PLAIN（テクスチャ無し）
 		static const
 		char	gVertexShader[] = 					// 頂点シェーダプログラム
-					"attribute vec4 position;"
+					"uniform mat3 projection;"
+					"attribute vec3 position;"
 					"attribute vec4 color;"
 					"varying vec4 vColor;"
-					"uniform mat4 projection;"
 					"void main() {"
-						"gl_Position = projection*position;"
+						"gl_Position = vec4(projection*position, 1.0);"
 						"vColor = color;"
 					"}";
 
@@ -106,14 +105,14 @@ void	Renderer::create_shader(void)
 	{						// SHADER_TEXTURE（テクスチャ有り）
 		static const
 		char	gVertexShader[] = 					// 頂点シェーダプログラム
-					"attribute vec4 position;"
+					"uniform mat3 projection;"
+					"attribute vec3 position;"
 					"attribute vec4 color;"
 					"varying vec4 vColor;"
 					"attribute vec2 texcoord;"
 					"varying vec2 vTexcoord;"
-					"uniform mat4 projection;"
 					"void main() {"
-						"gl_Position = projection*position;"
+						"gl_Position = vec4(projection*position, 1.0);"
 						"vColor = color;"
 						"vTexcoord = texcoord;"
 					"}";
@@ -129,6 +128,30 @@ void	Renderer::create_shader(void)
 					"}";
 
 		shader[SHADER_TEXTURE].create(gVertexShader, gFragmentShader);
+	}
+
+	{						// SHADER_SIMPLE
+		static const
+		char	gVertexShader[] = 					// 頂点シェーダプログラム
+					"attribute vec3 position;"
+					"attribute vec2 texcoord;"
+					"varying vec2 vTexcoord;"
+					"void main() {"
+						"gl_Position = vec4(position, 1.0);"
+						"vTexcoord = texcoord;"
+					"}";
+
+		static const
+		char	gFragmentShader[] = 				// フラグメントシェーダプログラム
+					"precision mediump float;"
+					"uniform vec4 color;"
+					"varying vec2 vTexcoord;"
+					"uniform sampler2D texture;"
+					"void main() {"
+						"gl_FragColor = texture2D(texture, vTexcoord)*color;"
+					"}";
+
+		shader[SHADER_SIMPLE].create(gVertexShader, gFragmentShader);
 	}
 }
 
@@ -165,6 +188,9 @@ void	ShaderProgram::create(GLuint v_shader, GLuint f_shader)
 
 	position	= glGetAttribLocation(program, "position");			// 座標
 	color		= glGetAttribLocation(program, "color");			// カラー
+	if ( color < 0 ) {
+		color	= glGetUniformLocation(program, "color");
+	}
 	projection	= glGetUniformLocation(program, "projection");		// 透視変換
 	texture		= glGetUniformLocation(program, "texture");			// テクスチャ
 	texcoord	= glGetAttribLocation(program, "texcoord");			// テクスチャUV座標
@@ -223,7 +249,10 @@ void	Renderer::release(void)
 	if ( prim_buffer ) {
 		free(prim_buffer);							// プリミティブ用汎用バッファ
 		prim_buffer = NULL;
+	}
+	if ( frame_buffer ) {
 		delete		frame_buffer;					// フレームバッファ削除
+		frame_buffer = NULL;
 		delete[]	shader;							// シェーダ削除
 	}
 	TexCache::release();							// テクスチャキャッシュ削除
@@ -250,6 +279,7 @@ void	Renderer::update(Bool _draw)
 	current_texture		= 0;
 	current_color		= NULL;
 	current_texcoord	= NULL;
+	current_vertex		= NULL;
 	frame_buffer->bind();				// フレームバッファ使用
 	Sprite::set_color();				// スプライト初期化
 
@@ -287,50 +317,27 @@ void	Renderer::draw(void)
 			fade_speed	= 0;
 		}
 	}
-	if ( screen_color[0] != (GLubyte)fade_bright ) {
-		for (int i = 0; i < 4*3; i++) {
-			screen_color[i + i/3] = (GLubyte)fade_bright;
-		}
-	}
-
-	static const
-	GLfloat	_projection[4*4] =
-			{
-				1.0f, 0.0f, 0.0f, 0.0f,
-				0.0f, 1.0f, 0.0f, 0.0f,
-				0.0f, 0.0f, 1.0f, 0.0f,
-				0.0f, 0.0f, 0.0f, 1.0f,
-			};
-
-	static const
-	GLfloat	_texcoords[] =
-			{
-				0.0f, 0.0f,
-				1.0f, 0.0f,
-				0.0f, 1.0f,
-				1.0f, 1.0f
-			};
-
-	static const
-	GLfloat	_vertices[] =
-			{
-				-1.0f,  1.0f,
-				 1.0f,  1.0f,
-				-1.0f, -1.0f,
-				 1.0f, -1.0f,
-			};
 
 	if ( draw_flag ) {
-		ShaderProgram*	_shader = use_shader(SHADER_TEXTURE);
-
 		// フレームバッファテクスチャ描画
+		static const
+		GLfloat	_vertices[] =
+				{
+					-1.0f,  1.0f,
+					 1.0f,  1.0f,
+					-1.0f, -1.0f,
+					 1.0f, -1.0f,
+				};
+		static GLfloat	_color[RGBA] = {1.0f, 1.0f, 1.0f, 1.0f};
+
 		glViewport(limit_rect.x, limit_rect.y, limit_rect.w, limit_rect.h);
-		glUniformMatrix4fv(_shader->projection, 1, GL_FALSE, _projection);
-		glVertexAttribPointer(_shader->position, 2, GL_FLOAT, GL_FALSE, 0, _vertices);
-		glVertexAttribPointer(_shader->texcoord, 2, GL_FLOAT, GL_FALSE, 0, _texcoords);
-		glVertexAttribPointer(_shader->color, 4, GL_UNSIGNED_BYTE, GL_TRUE, 0, screen_color);
-		glBindTexture(GL_TEXTURE_2D, frame_buffer->texture);
+		frame_buffer->Texture::bind();
+		_color[R] = _color[G] = _color[B] = fade_bright/255.0f;
+		glUniform4fv(use_shader(SHADER_SIMPLE)->color, 1, _color);
+		set_vertex(_vertices);
+		set_texcoord();
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
 		current_shader->unuse();
 		glFlush();
 	}
@@ -349,6 +356,9 @@ ShaderProgram*	Renderer::use_shader(ShaderProgram* _sd)
 		}
 		current_shader = _sd;
 		current_shader->use(mat_projection);
+		current_vertex = NULL;
+		current_texcoord = NULL;
+		current_color = NULL;
 	}
 	return	current_shader;
 }
@@ -357,7 +367,7 @@ void	ShaderProgram::use(const GLfloat* mat_projection)
 {
 	glUseProgram(program);
 	if ( (projection >= 0) && mat_projection ) {
-		glUniformMatrix4fv(projection, 1, GL_FALSE, mat_projection);
+		glUniformMatrix3fv(projection, 1, GL_FALSE, mat_projection);
 	}
 	if ( position >= 0 ) {
 		glEnableVertexAttribArray(position);
@@ -368,6 +378,7 @@ void	ShaderProgram::use(const GLfloat* mat_projection)
 	if ( texcoord >= 0 ) {
 		glEnableVertexAttribArray(texcoord);
 		glActiveTexture(GL_TEXTURE0);
+		glUniform1i(texture, 0);
 	}
 	glFlush();
 }
@@ -410,6 +421,25 @@ void	Renderer::set_color(GLubyte const* color)
 	}
 }
 
+void	Renderer::set_color(GLfloat const* color)
+{
+	if ( color != (GLfloat*)current_color ) {
+		glVertexAttribPointer(current_shader->color, 4, GL_FLOAT, GL_FALSE, 0, color);
+		current_color = (GLubyte*)color;
+	}
+}
+
+void	Renderer::set_color(void)
+{
+	static const
+	u32		_color[4] =
+			{
+				RGB(255, 255, 255), RGB(255, 255, 255), RGB(255, 255, 255), RGB(255, 255, 255),
+			};
+
+	set_color(_color);
+}
+
 /********************************
     テクスチャUV座標設定
 		引数	coord = UV座標
@@ -422,13 +452,44 @@ void	Renderer::set_texcoord(GLfloat const* coord)
 	}
 }
 
+void	Renderer::set_texcoord(void)
+{
+	static const
+	GLfloat		_texcoords[4][XY] =
+				{
+					{0.0f, 0.0f},
+					{1.0f, 0.0f},
+					{0.0f, 1.0f},
+					{1.0f, 1.0f},
+				};
+
+	set_texcoord(&_texcoords[0][0]);
+}
+
 /***********************************
     頂点座標設定
 		引数	vertex = 頂点座標
  ***********************************/
 void	Renderer::set_vertex(GLfloat const* vertex)
 {
-	glVertexAttribPointer(current_shader->position, 2, GL_FLOAT, GL_FALSE, 0, vertex);
+	if ( vertex != current_vertex ) {
+		glVertexAttribPointer(current_shader->position, 2, GL_FLOAT, GL_FALSE, 0, vertex);
+		current_vertex = vertex;
+	}
+}
+
+void	Renderer::set_vertex(void)
+{
+	static const
+	GLfloat		_vertices[4][XY] =
+				{
+					{-1.0f, -1.0f},
+					{ 1.0f, -1.0f},
+					{-1.0f,  1.0f},
+					{ 1.0f,  1.0f},
+				};
+
+	set_vertex(&_vertices[0][0]);
 }
 
 /****************************************
@@ -438,6 +499,8 @@ void	Renderer::set_vertex(GLfloat const* vertex)
  ****************************************/
 void*	Renderer::get_prim_buffer(u32 _size)
 {
+	assert(prim_buffer);
+
 	if ( prim_p + _size > PRIM_BUF_SIZE ) {
 		prim_p = 0;
 	}

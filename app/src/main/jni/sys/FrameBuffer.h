@@ -14,7 +14,7 @@ namespace sys
 class FrameBuffer : public Texture
 {
 	GLuint		frame_buffer;			// フレームバッファオブジェクト
-	GLfloat		mat_projection[4*4];	// 透視変換行列
+	GLfloat		mat_projection[3*3];	// 透視変換行列
 
 public :
 

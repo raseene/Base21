@@ -143,13 +143,13 @@ public :
 	static void		play(int, const void*, u32, int _loop = 1, float _vol = 1.0f);			// 再生
 	static void		play(int _channel, const char* _file, int _loop = 1, float _vol = 1.0f)
 					{
-						play(_channel, _file, sys::SoundPlayer::FILE_ASSET, _loop, _vol);
+						play(_channel, _file, SoundPlayer::FILE_ASSET, _loop, _vol);
 					}
 	static void		play(int);
 	static void		prepare(int, const void*, u32, int _loop = 1, float _vol = 1.0f);		// 再生準備
 	static void		prepare(int _channel, const char* _file, int _loop = 1, float _vol = 1.0f)
 					{
-						prepare(_channel, _file, sys::SoundPlayer::FILE_ASSET, _loop, _vol);
+						prepare(_channel, _file, SoundPlayer::FILE_ASSET, _loop, _vol);
 					}
 	static void		play(void);																// 全て再生
 	static void		stop(int, int _cnt = 0);	// 停止

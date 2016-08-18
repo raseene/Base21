@@ -46,13 +46,22 @@ enum
 		{
 			release();
 		}
+	void	init(short _format, short _width, short _height)		// 初期化
+			{
+				release();
+				format = _format;
+				width  = _width;
+				height = _height;
+			}
 	void	create(const u8*);				// 作成
 	void	release(void);					// 削除
 	void	bind(void);						// 使用
 	void	load(const u8*);				// データ読み込み
 	void	load_png(const u8*);			// PNG読み込み
 	void	load_pkm(const u8*);			// PKM読み込み
-	void	draw(float _x = 0.0f, float _y = 0.0f);		// 描画
+	void	draw(GLfloat const*);			// 描画
+	void	draw(void);
+	void	draw(u32);
 };
 
 

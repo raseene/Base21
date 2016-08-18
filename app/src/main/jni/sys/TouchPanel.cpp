@@ -47,8 +47,8 @@ void	TouchManager::update(short const* _status)
 {
 	if ( _status[0] ) {						// タッチ中
 		// タッチ位置補正
-		x = (_status[1] - sys::Renderer::screen_rect.x)*SCREEN_WIDTH/sys::Renderer::screen_rect.w - SCREEN_WIDTH/2;
-		y = (_status[2] - sys::Renderer::screen_rect.y)*SCREEN_HEIGHT/sys::Renderer::screen_rect.h - SCREEN_HEIGHT/2;
+		x = (_status[1] - Renderer::screen_rect.x)*SCREEN_WIDTH/Renderer::screen_rect.w - SCREEN_WIDTH/2;
+		y = (_status[2] - Renderer::screen_rect.y)*SCREEN_HEIGHT/Renderer::screen_rect.h - SCREEN_HEIGHT/2;
 		if ( !(flag & TOUCH) ) {					// 初回
 			flag = TOUCH | TRIGGER | REPEAT;
 			repeat_cnt = TOUCH_REPEAT1;
