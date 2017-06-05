@@ -31,12 +31,12 @@ public :
 			release();
 		}
 
-	void	create(int, int);			// 作成
-	void	create(void)
+	Bool	create(int, int);			// 作成
+	Bool	create(void)
 			{
-				create(width, height);
+				return	create(width, height);
 			}
-	void	release(void);				// 削除
+	Bool	release(void);				// 削除
 	void	bind(void);					// 使用
 };
 

@@ -50,7 +50,7 @@ struct SRect
 			}
 };
 
-// À•W
+// åº§æ¨™
 enum
 {
 	X	= 0,
@@ -60,7 +60,7 @@ enum
 	XYZ,
 };
 
-// ƒJƒ‰[
+// ã‚«ãƒ©ãƒ¼
 enum
 {
 	R	= 0,
@@ -89,23 +89,23 @@ enum
 
 namespace sys
 {
-extern JavaVM*	g_JavaVM;								// JavaVMî•ñ
+extern JavaVM*	g_JavaVM;								// JavaVMæƒ…å ±
 
-extern AAssetManager*	asset_manager;					// asset“Ç‚İ‚İ—p
+extern AAssetManager*	asset_manager;					// assetèª­ã¿è¾¼ã¿ç”¨
 
-void*	load_asset(const char*, u32* size = NULL);		// assetƒtƒ@ƒCƒ‹“Ç‚İ‚İ
+void*	load_asset(const char*, u32* size = NULL);		// assetãƒ•ã‚¡ã‚¤ãƒ«èª­ã¿è¾¼ã¿
 
 
-// ƒL[í—Ş
+// ã‚­ãƒ¼ç¨®é¡
 enum
 {
-	KEY_BACK	= 1,			// ƒoƒbƒNƒL[
-	KEY_YES,					// ƒ_ƒCƒAƒƒO—p
+	KEY_BACK	= 1,			// ãƒãƒƒã‚¯ã‚­ãƒ¼
+	KEY_YES,					// ãƒ€ã‚¤ã‚¢ãƒ­ã‚°ç”¨
 	KEY_NO,
 };
 
-extern u32	common_counter;		// ”Ä—pƒJƒEƒ“ƒ^
-extern int	key_status;			// ƒL[“ü—Íó‘Ô
+extern u32	common_counter;		// æ±ç”¨ã‚«ã‚¦ãƒ³ã‚¿
+extern int	key_status;			// ã‚­ãƒ¼å…¥åŠ›çŠ¶æ…‹
 }
 
 #endif

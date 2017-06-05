@@ -15,12 +15,14 @@ namespace sys
     作成
 		引数	_width  = 幅
 				_height = 高さ
+		戻り値	TRUE ：作成
+				FALSE：再利用
  ********************************/
-void	FrameBuffer::create(int _width, int _height)
+Bool	FrameBuffer::create(int _width, int _height)
 {
 	if ( frame_buffer ) {
 		if ( (width == _width) && (height == _height) ) {
-			return;
+			return	FALSE;
 		}
 		release();
 	}
@@ -42,20 +44,26 @@ void	FrameBuffer::create(int _width, int _height)
 	mat_projection[0] = 2.0f/width;
 	mat_projection[4] = 2.0f/height;
 	mat_projection[8] = 1.0f;
+	return	TRUE;
 }
 
-/**********
+/****************************
     削除
- **********/
-void	FrameBuffer::release(void)
+		戻り値	削除したか
+ ****************************/
+Bool	FrameBuffer::release(void)
 {
+	Bool	_result = FALSE;
+
 	if ( frame_buffer ) {
 		if ( Renderer::is_active() ) {
 			glDeleteFramebuffers(1, &frame_buffer);
+			_result = TRUE;
 		}
 		frame_buffer = 0;
 		Texture::release();
 	}
+	return	_result;
 }
 
 /**********

@@ -2,6 +2,7 @@
 #define	___SOUND_H___
 
 #include "common.h"
+#include <pthread.h>
 
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
@@ -17,24 +18,28 @@ namespace sys
  ********************/
 struct SoundData
 {
-	char*		data;			// データ
-	u32			size;			// データサイズ
-	int			loop;			// ループカウンタ
-	void*		file_data;		// 終了時に解放するデータ
-	SoundData*	next;			// 次のデータ
+// データフォーマット
+enum
+{
+	WAV,
+	OGG,
+};
 
-		SoundData(char* _data, u32 _size, int _loop, void* _file = NULL)		// コンストラクタ
-		{
-			data = _data;
-			size = _size;
-			loop = _loop;
-			file_data = _file;
-			next = NULL;
-		}
+static const u32	FILE_ASSET = 0xffffffff;			// assetファイル指定
+
+	int				format;			// データフォーマット
+	const void*		data;			// データ
+	u32				size;			// データサイズ
+	int				loop;			// ループカウンタ
+	long			position;		// 再生位置
+	const void*		file_data;		// 終了時に解放するデータ
+	SoundData*		next;			// 次のデータ
+
+		SoundData(const void*, u32, int);		// コンストラクタ
 		~SoundData()							// デストラクタ
 		{
 			if ( file_data ) {
-				free(file_data);
+				free((void*)file_data);
 			}
 			if ( next ) {
 				delete	next;
@@ -42,6 +47,7 @@ struct SoundData
 		}
 	void	set_next(SoundData* _next)			// 次のデータを設定
 			{
+				assert(_next->format == format);
 				if ( next ) {
 					next->set_next(_next);
 				}
@@ -75,16 +81,16 @@ private :
 	SLPlayItf						bqPlayerPlay;				// インタフェース
 	SLAndroidSimpleBufferQueueItf	bqPlayerBufferQueue;		// バッファキューインタフェース
 	SLVolumeItf						bqPlayerVolume;				// 音量インタフェース
+	SLDataFormat_PCM				format_pcm;					// PCMデータフォーマット
 
-	int				state;				// 状態
-	float			volume;				// 音量
-	float			fade_volume;		// フェードアウト音量
-	int				format;				// データフォーマット
-	SoundData*		sound_data;			// サウンドデータ
+	int					state;			// 状態
+	float				volume;			// 音量
+	float				fade_volume;	// フェードアウト音量
+	SoundData*			sound_data;		// サウンドデータ
+	pthread_mutex_t		mutex;
 
-	OggVorbis_File	ov_file;			// OggVorbisファイル情報
-	long			ov_pos;				// 現在位置
-	char*			pcm_buffer;			// PCMデータ展開バッファ
+	OggVorbis_File		ov_file;		// OggVorbisファイル情報
+	char*				pcm_buffer;		// PCMデータ展開バッファ
 
 public :
 
@@ -97,20 +103,20 @@ enum
 	PAUSED,				// 一時停止
 };
 
-static const u32	FILE_ASSET = 0xffffffff;			// assetファイル指定
-
-
 		SoundPlayer(void);				// コンストラクタ
 		~SoundPlayer();					// デストラクタ
+	void	create(void);				// 初期化
+	void	destroy(void);				// 終了
 	void	play(const void*, u32, int _loop = 1, float _vol = 1.0f);		// 再生
 	void	play(void);
 	void	prepare(const void*, u32, int _loop = 1, float _vol = 1.0f);	// 再生準備
+	void	prepare(void);
 	void	set_next(const void*, u32, int _loop = 1);						// 連続再生設定
 	void	stop(int _cnt = 0);												// 停止
 	void	set_volume(float);												// 音量設定
 	void	set_volume(void);
-	void	pause(Bool _f = TRUE);											// 一時停止
-	void	resume(int _state = PAUSED);									// 再開
+	void	pause(void);													// 一時停止
+	void	resume(void);													// 再開
 	void	update(void);													// 稼働
 	int		get_state(void)													// 状態取得
 			{
@@ -122,8 +128,7 @@ static const u32	FILE_ASSET = 0xffffffff;			// assetファイル指定
 	int		ov_close(void);							// メモリクローズ
 	long	ov_tell(void);							// メモリ位置通達
 
-	void	callback_wav(void);						// 再生コールバック
-	void	callback_ogg(void);
+	void	callback_play(void);					// 再生コールバック
 };
 
 
@@ -143,13 +148,13 @@ public :
 	static void		play(int, const void*, u32, int _loop = 1, float _vol = 1.0f);			// 再生
 	static void		play(int _channel, const char* _file, int _loop = 1, float _vol = 1.0f)
 					{
-						play(_channel, _file, SoundPlayer::FILE_ASSET, _loop, _vol);
+						play(_channel, _file, SoundData::FILE_ASSET, _loop, _vol);
 					}
 	static void		play(int);
 	static void		prepare(int, const void*, u32, int _loop = 1, float _vol = 1.0f);		// 再生準備
 	static void		prepare(int _channel, const char* _file, int _loop = 1, float _vol = 1.0f)
 					{
-						prepare(_channel, _file, SoundPlayer::FILE_ASSET, _loop, _vol);
+						prepare(_channel, _file, SoundData::FILE_ASSET, _loop, _vol);
 					}
 	static void		play(void);																// 全て再生
 	static void		stop(int, int _cnt = 0);	// 停止
@@ -157,6 +162,10 @@ public :
 	static void		set_volume(int, float);		// 音量設定
 	static void		set_master_volume(float);	// マスター音量設定
 	static void		set_next(int, const void*, u32, int _loop = 1);							// 連続再生設定
+	static void		set_next(int _channel, const void* _file, int _loop = 1)
+					{
+						set_next(_channel, _file, SoundData::FILE_ASSET, _loop);
+					}
 	static void		pause(int);					// 一時停止
 	static void		pause(void);				// 全て一時停止
 	static void		pause_system(void);			// システムによる一時停止

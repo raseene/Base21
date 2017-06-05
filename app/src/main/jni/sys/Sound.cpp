@@ -50,6 +50,14 @@ void	SoundPlayer::release_engine(void)
  ********************/
 SoundPlayer::SoundPlayer(void)
 {
+	state = STOPPED;
+	sound_data = NULL;
+	pthread_mutex_init(&mutex, NULL);
+	create();
+}
+
+void	SoundPlayer::create(void)
+{
 	SLresult	result;
 
 	result = (*engineEngine)->CreateOutputMix(engineEngine, &outputMixObject, 0, NULL, NULL);
@@ -60,9 +68,13 @@ SoundPlayer::SoundPlayer(void)
 
 	pcm_buffer		= new char[PCM_BUF_SIZE];
 	bqPlayerObject	= NULL;
-	sound_data		= NULL;
 
-	state = STOPPED;
+	if ( sound_data ) {					// 再開
+		prepare();
+		if ( state == PLAYING ) {
+			play();
+		}
+	}
 }
 
 /******************
@@ -70,11 +82,28 @@ SoundPlayer::SoundPlayer(void)
  ******************/
 SoundPlayer::~SoundPlayer()
 {
-	stop();
-	(*outputMixObject)->Destroy(outputMixObject);
+	destroy();
 	if ( sound_data ) {
 		delete	sound_data;
 	}
+	pthread_mutex_destroy(&mutex);
+}
+
+void	SoundPlayer::destroy(void)
+{
+	pthread_mutex_lock(&mutex);
+	if ( bqPlayerObject ) {
+		(*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_STOPPED);
+		(*bqPlayerBufferQueue)->Clear(bqPlayerBufferQueue);
+		(*bqPlayerObject)->Destroy(bqPlayerObject);
+		bqPlayerObject = NULL;
+	}
+	pthread_mutex_unlock(&mutex);
+	if ( sound_data && (sound_data->format == SoundData::OGG) ) {
+		sound_data->position = ov_pcm_tell(&ov_file);
+		::ov_clear(&ov_file);
+	}
+	(*outputMixObject)->Destroy(outputMixObject);
 	delete[]	pcm_buffer;
 }
 
@@ -94,7 +123,7 @@ size_t	SoundPlayer::ov_read(void* ptr, size_t size, size_t nmemb)
 		return	0;
 	}
 
-	size_t	_count = (size_t)((sound_data->size - ov_pos)/size);
+	size_t	_count = (size_t)((sound_data->size - sound_data->position)/size);
 
 	if ( _count >= nmemb ) {
 		_count = nmemb;
@@ -103,8 +132,8 @@ size_t	SoundPlayer::ov_read(void* ptr, size_t size, size_t nmemb)
 		return	0;
 	}
 	size *= _count;
-	memcpy(ptr, sound_data->data + ov_pos, size);
-	ov_pos += size;
+	memcpy(ptr, (char*)sound_data->data + sound_data->position, size);
+	sound_data->position += size;
 
 	return	_count;
 }
@@ -122,27 +151,27 @@ int		SoundPlayer::ov_seek(ogg_int64_t offset, int whence)
 {
 	switch( whence ) {
 	  case SEEK_CUR :
-		ov_pos += offset;
+		sound_data->position += offset;
 		break;
 
 	  case SEEK_END :
-		ov_pos = sound_data->size + offset;
+		sound_data->position = sound_data->size + offset;
 		break;
 
 	  case SEEK_SET :
-		ov_pos = offset;
+		sound_data->position = offset;
 		break;
 
 	  default :
 		return	-1;
 	}
 
-	if ( ov_pos > sound_data->size ) {
-		ov_pos = sound_data->size;
+	if ( sound_data->position > sound_data->size ) {
+		sound_data->position = sound_data->size;
 		return	-1;
 	}
-	else if ( ov_pos < 0 ) {
-		ov_pos = 0;
+	else if ( sound_data->position < 0 ) {
+		sound_data->position = 0;
 		return	-1;
 	}
 	return	0;
@@ -173,7 +202,7 @@ long	callback_ov_tell(void* datasource)
 
 long	SoundPlayer::ov_tell(void)
 {
-	return	ov_pos;
+	return	sound_data->position;
 }
 
 /***************************
@@ -188,104 +217,8 @@ ov_callbacks	callbacks =
 					callback_ov_tell,
 				};
 
-/**********************
-    再生コールバック
- **********************/
-static
-void	bqPlayerCallbackWAV(SLAndroidSimpleBufferQueueItf, void* context)
-{
-	((SoundPlayer*)context)->callback_wav();
-}
 
-void	SoundPlayer::callback_wav(void)
-{
-	if ( sound_data->loop == 1 ) {
-		if ( sound_data ) {
-			if ( sound_data->next == NULL ) {			// 終了
-				delete	sound_data;
-				sound_data = NULL;
-			}
-			else {										// 連続再生
-				SoundData*	_next = sound_data->next;
-
-				sound_data->next = NULL;
-				delete	sound_data;
-				sound_data = _next;
-				(*bqPlayerBufferQueue)->Enqueue(bqPlayerBufferQueue, sound_data->data, (SLuint32)sound_data->size);
-				return;
-			}
-		}
-		(*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_STOPPED);									// 停止
-		state = STOPPED;
-		return;
-	}
-	if ( sound_data->loop > 1 ) {
-		sound_data->loop--;
-	}
-	(*bqPlayerBufferQueue)->Enqueue(bqPlayerBufferQueue, sound_data->data, (SLuint32)sound_data->size);		// 再生開始
-}
-
-static
-void	bqPlayerCallbackOGG(SLAndroidSimpleBufferQueueItf, void* context)
-{
-	((SoundPlayer*)context)->callback_ogg();
-}
-
-void	SoundPlayer::callback_ogg(void)
-{
-	SLuint32	read_size;
-
-	if ( bqPlayerObject == NULL ) {
-		return;
-	}
-	while ( TRUE ) {
-		read_size = ::ov_read(&ov_file, pcm_buffer, PCM_BUF_SIZE, NULL);
-		if ( read_size > 0 ) {
-			(*bqPlayerBufferQueue)->Enqueue(bqPlayerBufferQueue, pcm_buffer, read_size);
-			return;
-		}
-
-		if ( sound_data->loop != 1 ) {
-			::ov_pcm_seek(&ov_file, 0);				// ループ
-			if ( sound_data->loop > 1 ) {
-				sound_data->loop--;
-			}
-		}
-		else if ( sound_data->next == NULL ) {		// 終了
-			break;
-		}
-		else {
-			SoundData*	_next = sound_data->next;	// 連続再生
-
-			sound_data->next = NULL;
-			delete	sound_data;
-			sound_data = _next;
-
-			ov_pos = 0;
-			if ( ::ov_open_callbacks(this, &ov_file, NULL, 0, callbacks) ) {
-				LOGE("ov_open_callbacks ERROR!");
-				::ov_clear(&ov_file);
-				break;
-			}
-		}
-	}
-
-	(*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_STOPPED);			// 終了
-	if ( sound_data ) {
-		delete	sound_data;
-		sound_data = NULL;
-	}
-	state = STOPPED;
-}
-
-
-// データフォーマット
-enum
-{
-	FORMAT_WAV,
-	FORMAT_OGG,
-};
-
+// WAVデータヘッダ
 struct WaveFormat
 {
 	s8		riff[4];
@@ -302,6 +235,140 @@ struct WaveFormat
 	u32		data_size;
 };
 
+/**********************
+    再生コールバック
+ **********************/
+static
+void	bqPlayerCallback(SLAndroidSimpleBufferQueueItf, void* context)
+{
+	((SoundPlayer*)context)->callback_play();
+}
+
+void	SoundPlayer::callback_play(void)
+{
+	pthread_mutex_lock(&mutex);
+	if ( (state == STOPPED) || (bqPlayerObject == NULL) || (sound_data == NULL) ) {
+		pthread_mutex_unlock(&mutex);
+		return;
+	}
+
+	SLuint32	_size, _t;
+
+	switch ( sound_data->format ) {							// データフォーマット
+	  case SoundData::WAV :			// WAV
+		while ( TRUE ) {
+			_size = (SLuint32)(sound_data->size - sound_data->position);
+			if ( _size > 0 ) {								// 再生中
+				if ( _size > PCM_BUF_SIZE ) {
+					_size = PCM_BUF_SIZE;
+				}
+				(*bqPlayerBufferQueue)->Enqueue(bqPlayerBufferQueue, (char*)sound_data->data + sound_data->position, _size);
+				sound_data->position += _size;
+				pthread_mutex_unlock(&mutex);
+				return;
+			}
+			else if ( sound_data->loop != 1 ) {				// ループ
+				if ( sound_data->loop > 1 ) {
+					sound_data->loop--;
+				}
+				sound_data->position = sizeof(WaveFormat);
+			}
+			else if ( sound_data->next != NULL ) {			// 連続再生
+				SoundData*	_next = sound_data->next;
+
+				sound_data->next = NULL;
+				delete	sound_data;
+				sound_data = _next;
+			}
+			else {											// 終了
+				break;
+			}
+		}
+		break;
+
+	  case SoundData::OGG :			// OGG
+		while ( TRUE ) {
+			_size = 0;
+			do {
+				_t = ::ov_read(&ov_file, pcm_buffer + _size, PCM_BUF_SIZE - _size, NULL);
+				_size += _t;
+			} while ( (_size < PCM_BUF_SIZE) && (_t > 0) );
+			if ( _size > 0 ) {								// 再生中
+				(*bqPlayerBufferQueue)->Enqueue(bqPlayerBufferQueue, pcm_buffer, _size);
+				pthread_mutex_unlock(&mutex);
+				return;
+			}
+			else if ( sound_data->loop != 1 ) {				// ループ
+				if ( sound_data->loop > 1 ) {
+					sound_data->loop--;
+				}
+				::ov_pcm_seek(&ov_file, 0);
+			}
+			else if ( sound_data->next != NULL ) {			// 連続再生
+				SoundData*	_next = sound_data->next;
+
+				sound_data->next = NULL;
+				delete	sound_data;
+				sound_data = _next;
+				::ov_clear(&ov_file);
+				if ( ::ov_open_callbacks(this, &ov_file, NULL, 0, callbacks) ) {
+					LOGE("ov_open_callbacks ERROR!");
+					break;
+				}
+			}
+			else {											// 終了
+				break;
+			}
+		}
+		break;
+	}
+	pthread_mutex_unlock(&mutex);
+	stop();													// 停止
+}
+
+
+/****************************************
+    サウンドデータ作成
+		引数	_data = データ
+				_size = データサイズ
+				_loop = ループカウンタ
+		戻り値	サウンドデータ
+ ****************************************/
+SoundData::SoundData(const void* _data, u32 _size, int _loop)
+{
+	switch ( _size ) {
+	  case FILE_ASSET :				// assetファイル
+		data = load_asset((char*)_data, &size);
+		file_data = data;
+		break;
+
+	  default :						// メモリ
+		data = _data;
+		size = _size;
+		file_data = NULL;
+		break;
+	}
+	loop = _loop;
+	next = NULL;
+
+	switch ( *((u32*)data) ) {						// データフォーマット
+	  case 0x46464952 :				// WAV
+		format   = WAV;
+		size     = ((WaveFormat*)data)->data_size + sizeof(WaveFormat);
+		position = sizeof(WaveFormat);
+		break;
+
+	  case 0x5367674f :				// OGG
+		format   = OGG;
+		position = 0;
+		break;
+
+	  default :
+		assert(FALSE);
+		break;
+	}
+}
+
 /****************************************************
     再生
 		引数	_data = サウンドデータ
@@ -312,66 +379,58 @@ struct WaveFormat
 void	SoundPlayer::prepare(const void* _data, u32 _size, int _loop, float _vol)
 {
 	stop();
+	pthread_mutex_lock(&mutex);
+	sound_data = new SoundData((char*)_data, _size, _loop);				// サウンドデータ作成
+	pthread_mutex_unlock(&mutex);
+	volume		= _vol;
+	fade_volume	= 0.0f;
+	state = PREPARED;
+	prepare();
+}
 
-	void*	_file_data;
+void	SoundPlayer::prepare(void)
+{
+	SLDataFormat_PCM	_pcm;
+	SLresult			result;
 
-	switch ( _size ) {
-	  case FILE_ASSET :				// assetファイル
-		_file_data = load_asset((char*)_data, &_size);
-		_data = _file_data;
-		break;
-
-	  default :						// メモリ
-		_file_data = NULL;
-		break;
-	}
-
-
-	SLDataLocator_AndroidSimpleBufferQueue	loc_bufq = {SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE, 2};
-	SLDataFormat_PCM						format_pcm;
-	SLDataSource							audioSrc = {&loc_bufq, &format_pcm};
-
-	switch ( *((u32*)_data) ) {						// データフォーマット
-	  case 0x46464952 :			// WAV
+	switch ( sound_data->format ) {					// データフォーマット
+	  case SoundData::WAV :			// WAV
 		{
-			format = FORMAT_WAV;
+			WaveFormat*		_info = (WaveFormat*)sound_data->data;
 
-			WaveFormat*		_info = (WaveFormat*)_data;
-
-			format_pcm.formatType		= SL_DATAFORMAT_PCM;
-			format_pcm.numChannels		= (SLuint32)_info->channel;
-			format_pcm.samplesPerSec	= (SLuint32)_info->rate*1000;
-			format_pcm.bitsPerSample	= (SLuint32)_info->bit;
-			format_pcm.containerSize	= (SLuint32)_info->bit;
-			format_pcm.channelMask		= (_info->channel == 1) ? SL_SPEAKER_FRONT_CENTER : (SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT);
-			format_pcm.endianness		= SL_BYTEORDER_LITTLEENDIAN;
-
-			sound_data = new SoundData((char*)((u32)_data + sizeof(WaveFormat)), _info->data_size, _loop, _file_data);
+			_pcm.formatType		= SL_DATAFORMAT_PCM;
+			_pcm.numChannels	= (SLuint32)_info->channel;
+			_pcm.samplesPerSec	= (SLuint32)_info->rate*1000;
+			_pcm.bitsPerSample	= (SLuint32)_info->bit;
+			_pcm.containerSize	= (SLuint32)_info->bit;
+			_pcm.channelMask	= (_info->channel == 1) ? SL_SPEAKER_FRONT_CENTER : (SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT);
+			_pcm.endianness		= SL_BYTEORDER_LITTLEENDIAN;
 		}
 		break;
 
-	  case 0x5367674f :			// OGG
+	  case SoundData::OGG :			// OGG
 		{
-			format = FORMAT_OGG;
+			ogg_int64_t		_pos = sound_data->position;
 
-			sound_data = new SoundData((char*)_data, _size, _loop, _file_data);
-			ov_pos = 0;								// 現在位置
+			sound_data->position = 0;
 			if ( ::ov_open_callbacks(this, &ov_file, NULL, 0, callbacks) ) {
 				LOGE("ov_open_callbacks ERROR!");
 				::ov_clear(&ov_file);
 				delete	sound_data;
+				sound_data = NULL;
 				return;
 			}
+			::ov_pcm_seek(&ov_file, _pos);
 
 			vorbis_info*	_info = ::ov_info(&ov_file, -1);
 
-			format_pcm.formatType		= SL_DATAFORMAT_PCM;
-			format_pcm.numChannels		= (SLuint32)_info->channels;
-			format_pcm.samplesPerSec	= (SLuint32)_info->rate*1000;
-			format_pcm.bitsPerSample	= (SLuint32)SL_PCMSAMPLEFORMAT_FIXED_16;
-			format_pcm.containerSize	= (SLuint32)SL_PCMSAMPLEFORMAT_FIXED_16;
-			format_pcm.channelMask		= (_info->channels == 1) ? SL_SPEAKER_FRONT_CENTER : (SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT);
-			format_pcm.endianness		= SL_BYTEORDER_LITTLEENDIAN;
+			_pcm.formatType		= SL_DATAFORMAT_PCM;
+			_pcm.numChannels	= (SLuint32)_info->channels;
+			_pcm.samplesPerSec	= (SLuint32)_info->rate*1000;
+			_pcm.bitsPerSample	= (SLuint32)SL_PCMSAMPLEFORMAT_FIXED_16;
+			_pcm.containerSize	= (SLuint32)SL_PCMSAMPLEFORMAT_FIXED_16;
+			_pcm.channelMask	= (_info->channels == 1) ? SL_SPEAKER_FRONT_CENTER : (SL_SPEAKER_FRONT_LEFT | SL_SPEAKER_FRONT_RIGHT);
+			_pcm.endianness		= SL_BYTEORDER_LITTLEENDIAN;
 		}
 		break;
 
@@ -380,60 +439,50 @@ void	SoundPlayer::prepare(const void* _data, u32 _size, int _loop, float _vol)
 		break;
 	}
 
-	SLDataLocator_OutputMix		loc_outmix = {SL_DATALOCATOR_OUTPUTMIX, outputMixObject};
-	SLDataSink					audioSnk = {&loc_outmix, NULL};
-
-	const SLInterfaceID		ids[3] = {SL_IID_PLAY, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, SL_IID_VOLUME};
-	const SLboolean			req[3] = {SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE};
-
-	SLresult	result;
-
-	result = (*engineEngine)->CreateAudioPlayer(engineEngine, &bqPlayerObject, &audioSrc, &audioSnk, 3, ids, req);
-	if ( SL_RESULT_SUCCESS != result ) {									// プレイヤーオブジェクト作成
-		bqPlayerObject = NULL;
-		return;
-	}
-
-	result = (*bqPlayerObject)->Realize(bqPlayerObject, SL_BOOLEAN_FALSE);	// リアライズ
-	assert(SL_RESULT_SUCCESS == result);
-
-	result = (*bqPlayerObject)->GetInterface(bqPlayerObject, SL_IID_PLAY, &bqPlayerPlay);
-	assert(SL_RESULT_SUCCESS == result);									// インタフェース取得
-
-	result = (*bqPlayerObject)->GetInterface(bqPlayerObject, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, &bqPlayerBufferQueue);
-	assert(SL_RESULT_SUCCESS == result);									// バッファキューインタフェース
-
-	result = (*bqPlayerObject)->GetInterface(bqPlayerObject, SL_IID_VOLUME, &bqPlayerVolume);
-	assert(SL_RESULT_SUCCESS == result);									// 音量インタフェース
-	set_volume(_vol);														// 音量設定
-
-	switch ( format ) {
-	  case FORMAT_WAV :			// WAV
-		{
-			result = (*bqPlayerBufferQueue)->RegisterCallback(bqPlayerBufferQueue, bqPlayerCallbackWAV, this);
-			assert(SL_RESULT_SUCCESS == result);							// 再生コールバック設定
-
-			(*bqPlayerBufferQueue)->Enqueue(bqPlayerBufferQueue, sound_data->data, (SLuint32)sound_data->size);
+	if ( (bqPlayerObject == NULL) || memcmp(&format_pcm, &_pcm, sizeof(SLDataFormat_PCM)) ) {
+		if ( bqPlayerObject ) {													// PCMデータフォーマット変更
+			(*bqPlayerObject)->Destroy(bqPlayerObject);
 		}
-		break;
+		memcpy(&format_pcm, &_pcm, sizeof(SLDataFormat_PCM));
 
-	  case FORMAT_OGG :			// OGG
-		{
-			result = (*bqPlayerBufferQueue)->RegisterCallback(bqPlayerBufferQueue, bqPlayerCallbackOGG, this);
-			assert(SL_RESULT_SUCCESS == result);							// 再生コールバック設定
+		SLDataLocator_AndroidSimpleBufferQueue	loc_bufq   = {SL_DATALOCATOR_ANDROIDSIMPLEBUFFERQUEUE, 2};
+		SLDataSource							audioSrc   = {&loc_bufq, &format_pcm};
+		SLDataLocator_OutputMix					loc_outmix = {SL_DATALOCATOR_OUTPUTMIX, outputMixObject};
+		SLDataSink								audioSnk   = {&loc_outmix, NULL};
 
-			callback_ogg();													// データ読み込み
+		const SLInterfaceID		ids[3] = {SL_IID_PLAY, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, SL_IID_VOLUME};
+		const SLboolean			req[3] = {SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE, SL_BOOLEAN_TRUE};
+
+		result = (*engineEngine)->CreateAudioPlayer(engineEngine, &bqPlayerObject, &audioSrc, &audioSnk, 3, ids, req);
+		if ( SL_RESULT_SUCCESS != result ) {									// プレイヤーオブジェクト作成
+			bqPlayerObject = NULL;
+			return;
 		}
-		break;
+
+		result = (*bqPlayerObject)->Realize(bqPlayerObject, SL_BOOLEAN_FALSE);	// リアライズ
+		assert(SL_RESULT_SUCCESS == result);
+
+		result = (*bqPlayerObject)->GetInterface(bqPlayerObject, SL_IID_PLAY, &bqPlayerPlay);
+		assert(SL_RESULT_SUCCESS == result);									// インタフェース取得
+
+		result = (*bqPlayerObject)->GetInterface(bqPlayerObject, SL_IID_VOLUME, &bqPlayerVolume);
+		assert(SL_RESULT_SUCCESS == result);									// 音量インタフェース
+
+		result = (*bqPlayerObject)->GetInterface(bqPlayerObject, SL_IID_ANDROIDSIMPLEBUFFERQUEUE, &bqPlayerBufferQueue);
+		assert(SL_RESULT_SUCCESS == result);									// バッファキューインタフェース
+
+		result = (*bqPlayerBufferQueue)->RegisterCallback(bqPlayerBufferQueue, bqPlayerCallback, this);
+		assert(SL_RESULT_SUCCESS == result);									// 再生コールバック設定
 	}
-	state = PREPARED;
+	set_volume();																// 音量設定
+	callback_play();															// データ読み込み
 }
 
 void	SoundPlayer::play(void)
 {
-	if ( bqPlayerObject ) {
+	if ( bqPlayerObject && sound_data ) {
 		state = PLAYING;
-		(*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_PLAYING);			// 再生開始
+		(*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_PLAYING);		// 再生開始
 	}
 }
 
@@ -452,38 +501,13 @@ void	SoundPlayer::play(const void* _data, u32 _size, int _loop, float _vol)
  ****************************************************/
 void	SoundPlayer::set_next(const void* _data, u32 _size, int _loop)
 {
-	if ( sound_data == NULL ) {				// すでに鳴り終わっている可能性
+	if ( sound_data ) {
+		pthread_mutex_lock(&mutex);
+		sound_data->set_next(new SoundData(_data, _size, _loop));
+		pthread_mutex_unlock(&mutex);
+	}
+	else {									// すでに鳴り終わっている
 		play(_data, _size, _loop);
-		return;
-	}
-
-	void*	_file_data;
-
-	switch ( _size ) {
-	  case FILE_ASSET :				// assetファイル
-		_file_data = load_asset((char*)_data, &_size);
-		_data = _file_data;
-		break;
-
-	  default :						// メモリ
-		_file_data = NULL;
-		break;
-	}
-
-	switch ( format ) {
-	  case FORMAT_WAV :						// WAVデータ
-		assert(*((u32*)_data) == 0x46464952);
-		{
-			WaveFormat*		_info = (WaveFormat*)_data;
-
-			sound_data->set_next(new SoundData((char*)((u32)_data + sizeof(WaveFormat)), _info->data_size, _loop, _file_data));
-		}
-		break;
-
-	  case FORMAT_OGG :						// OGGデータ
-		assert(*((u32*)_data) == 0x5367674f);
-		sound_data->set_next(new SoundData((char*)_data, _size, _loop, _file_data));
-		break;
 	}
 }
 
@@ -494,26 +518,27 @@ void	SoundPlayer::set_next(const void* _data, u32 _size, int _loop)
  *************************************/
 void	SoundPlayer::stop(int _cnt)
 {
-	if ( bqPlayerObject ) {					// 再生中
+	pthread_mutex_lock(&mutex);
+	if ( (state != STOPPED) && bqPlayerObject ) {		// 再生中
 		if ( (_cnt == 0) || (volume == 0.0f) ) {
 			(*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_STOPPED);			// 停止状態
-			(*bqPlayerObject)->Destroy(bqPlayerObject);
-			bqPlayerObject = NULL;
-			if ( format == FORMAT_OGG ) {
-				::ov_clear(&ov_file);
-				format = -1;
-			}
+			(*bqPlayerBufferQueue)->Clear(bqPlayerBufferQueue);
 			if ( sound_data ) {
+				if ( sound_data->format == SoundData::OGG ) {
+					::ov_clear(&ov_file);
+				}
 				delete	sound_data;
 				sound_data = NULL;
 			}
 		}
 		else {
 			fade_volume = volume/_cnt;
+			pthread_mutex_unlock(&mutex);
 			return;
 		}
 	}
 	state = STOPPED;
+	pthread_mutex_unlock(&mutex);
 }
 
 
@@ -555,29 +580,25 @@ Bool	SoundPlayer::set_master_volume(float _vol)
 }
 
 
-/*********************************************
+/**************
     一時停止
-		引数	_f = 状態フラグを変更するか
- *********************************************/
-void	SoundPlayer::pause(Bool _f)
+ **************/
+void	SoundPlayer::pause(void)
 {
 	if ( state == PLAYING ) {				// 再生中
 		if ( bqPlayerObject ) {
 			(*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_PAUSED);		// 一時停止状態
 		}
-		if ( _f ) {
-			state = PAUSED;
-		}
+		state = PAUSED;
 	}
 }
 
-/***********************************
+/**********
     再開
-		引数	_state = 再開条件
- ***********************************/
-void	SoundPlayer::resume(int _state)
+ **********/
+void	SoundPlayer::resume(void)
 {
-	if ( state == _state ) {
+	if ( state == PAUSED ) {
 		play();
 	}
 }
@@ -589,13 +610,6 @@ void	SoundPlayer::resume(int _state)
 void	SoundPlayer::update(void)
 {
 	switch ( state ) {
-	  case STOPPED :						// 停止中
-		if ( bqPlayerObject ) {	
-			(*bqPlayerObject)->Destroy(bqPlayerObject);
-			bqPlayerObject = NULL;
-		}
-		break;
-
 	  case PLAYING :						// 再生中
 		if ( fade_volume > 0.0f ) {
 			volume -= fade_volume;
@@ -609,7 +623,6 @@ void	SoundPlayer::update(void)
 		break;
 	}
 }
-
 
 
 SoundPlayer*	SoundManager::player = NULL;			// プレイヤー
@@ -671,9 +684,9 @@ enum
 	COMMAND_VOLUME,			// 音量設定
 	COMMAND_NEXT,			// 連続再生設定
 	COMMAND_PAUSE,			// 一時停止
-	COMMAND_PAUSE_SYS,
 	COMMAND_RESUME,			// 再開
-	COMMAND_RESUME_SYS,
+	COMMAND_PAUSE_SYS,		// システムによる一時停止
+	COMMAND_RESUME_SYS,		// システムによる再開
 };
 
 /**********
@@ -883,7 +896,7 @@ void	SoundManager::get_command(int _channel, int _command, void* _data, u32 _siz
 			player[_channel].play();
 		}
 		else {
-			for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {			// 全て再開
+			for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {			// 全て開始
 				player[i].play();
 			}
 		}
@@ -917,18 +930,12 @@ void	SoundManager::get_command(int _channel, int _command, void* _data, u32 _siz
 
 	  case COMMAND_PAUSE :
 		if ( _channel >= 0 ) {
-			player[_channel].pause(TRUE);
+			player[_channel].pause();
 		}
 		else {
 			for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {			// 全て一時停止
-				player[i].pause(TRUE);
+				player[i].pause();
 			}
-		}
-		break;
-
-	  case COMMAND_PAUSE_SYS :
-		for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {				// システムによる再開
-			player[i].pause(FALSE);
 		}
 		break;
 
@@ -943,9 +950,17 @@ void	SoundManager::get_command(int _channel, int _command, void* _data, u32 _siz
 		}
 		break;
 
+	  case COMMAND_PAUSE_SYS :
+		for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
+			player[i].destroy();
+		}
+		SoundPlayer::release_engine();								// サウンドエンジン終了
+		break;
+
 	  case COMMAND_RESUME_SYS :
-		for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {				// システムによる再開
-			player[i].resume(SoundPlayer::PLAYING);
+		SoundPlayer::create_engine();								// サウンドエンジン初期化
+		for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
+			player[i].create();
 		}
 		break;
 	}

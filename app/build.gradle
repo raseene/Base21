@@ -1,104 +1,103 @@
 apply plugin: 'com.android.application'
 
 android {
-	compileSdkVersion 24
-	buildToolsVersion "23.0.3"
+    compileSdkVersion 25
+    buildToolsVersion '25.0.3'
 
-	defaultConfig {
-		applicationId "com.example.base"
-		versionCode 1
-		versionName '1.0'
-		minSdkVersion 9
-		targetSdkVersion 24
-		ndk {
-			moduleName "native"
-		}
-	}
+    defaultConfig {
+        applicationId "com.example.base"
+        versionCode 1
+        versionName '1.0'
+        minSdkVersion 9
+        targetSdkVersion 25
+        ndk {
+            moduleName "native"
+        }
+    }
 
-	signingConfigs {
-		releaseKey {
-			keyAlias System.getenv("KEYALIAS")
-			keyPassword System.getenv("PASSWORD")
-			storeFile file(System.getenv("KEYSTORE"))
-			storePassword System.getenv("PASSWORD")
-		}
-	}
-	buildTypes {
-		debug {
-			applicationIdSuffix = '.debug'
-			versionNameSuffix = 'd'
-			debuggable true
-			jniDebuggable true
-		}
-		release {
-			minifyEnabled true
-			proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-project.txt'
-			debuggable false
-			jniDebuggable false
-			signingConfig signingConfigs.releaseKey
-		}
-	}
-	sourceSets {
-		main {
-			jni.srcDirs = []
-			jniLibs.srcDir "src/main/libs"
-		}
-	}
+    signingConfigs {
+        releaseKey {
+            keyAlias System.getenv("KEYALIAS")
+            keyPassword System.getenv("PASSWORD")
+            storeFile file(System.getenv("KEYSTORE"))
+            storePassword System.getenv("PASSWORD")
+        }
+    }
+    buildTypes {
+        debug {
+            applicationIdSuffix = '.debug'
+            versionNameSuffix = 'd'
+            debuggable true
+            jniDebuggable true
+        }
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-project.txt'
+            debuggable false
+            jniDebuggable false
+            signingConfig signingConfigs.releaseKey
+        }
+    }
+    sourceSets {
+        main {
+            jni.srcDirs = []
+            jniLibs.srcDir "src/main/libs"
+        }
+    }
 
-	dexOptions {
-		incremental true
-		javaMaxHeapSize "2g"
-	}
+    dexOptions {
+        javaMaxHeapSize "2g"
+    }
 }
 
 dependencies {
-	compile 'com.android.support:support-v4:24.1.1'
+    compile 'com.android.support:support-v4:25.3.1'
 }
 
 
 import org.apache.tools.ant.taskdefs.condition.Os
 
 def getNdkFolder() {
-	Properties properties = new Properties()
-	properties.load(project.rootProject.file('local.properties').newDataInputStream())
-	def ndkdir = properties.getProperty('ndk.dir', null)
+    Properties properties = new Properties()
+    properties.load(project.rootProject.file('local.properties').newDataInputStream())
+    def ndkdir = properties.getProperty('ndk.dir', null)
  
-	if ( ndkdir == null ) {
-		if ( System.env.ANDROID_NDK_ROOT != null ) {
-			ndkdir = System.env.ANDROID_NDK_ROOT
- 		}
-		else if ( System.env.NDK_ROOT != null ) {
-			ndkdir = System.env.NDK_ROOT
-		}
-		else if ( System.env.NDKROOT != null ) {
-			ndkdir = System.env.NDKROOT
-		}
- 		else if ( System.env.NDK != null ) {
-			ndkdir = System.env.NDK
-		}
- 		else {
-			throw new GradleException("NDK location not found. Define location with ndk.dir in the local.properties file or with an ANDROID_NDK_ROOT/NDK_ROOT/NDKROOT/NDK environment variable.")
-		}
-	}
-	if ( !ndkdir.endsWith('/') ) {
-		ndkdir = ndkdir + File.separator;
-	}
-	return	ndkdir
+    if ( ndkdir == null ) {
+        if ( System.env.ANDROID_NDK_ROOT != null ) {
+            ndkdir = System.env.ANDROID_NDK_ROOT
+        }
+        else if ( System.env.NDK_ROOT != null ) {
+            ndkdir = System.env.NDK_ROOT
+        }
+        else if ( System.env.NDKROOT != null ) {
+            ndkdir = System.env.NDKROOT
+        }
+        else if ( System.env.NDK != null ) {
+            ndkdir = System.env.NDK
+        }
+        else {
+            throw new GradleException("NDK location not found. Define location with ndk.dir in the local.properties file or with an ANDROID_NDK_ROOT/NDK_ROOT/NDKROOT/NDK environment variable.")
+        }
+    }
+    if ( !ndkdir.endsWith('/') ) {
+        ndkdir = ndkdir + File.separator;
+    }
+    return  ndkdir
 }
 
 task ndkBuild (type: Exec, description: 'Compile JNI source via NDK') {
-	println('executing ndkBuild')
-	def ndkBuildingDir = getNdkFolder();
-	def ndkBuildPath
-	if ( Os.isFamily(Os.FAMILY_WINDOWS) ) {
-		ndkBuildPath = ndkBuildingDir + 'ndk-build.cmd'
-	}
-	else {
-		ndkBuildPath = ndkBuildingDir + 'ndk-build'
-	}
-	commandLine ndkBuildPath, '-j4', '-C', file('src/main').absolutePath
+    println('executing ndkBuild')
+    def ndkBuildingDir = getNdkFolder();
+    def ndkBuildPath
+    if ( Os.isFamily(Os.FAMILY_WINDOWS) ) {
+        ndkBuildPath = ndkBuildingDir + 'ndk-build.cmd'
+    }
+    else {
+        ndkBuildPath = ndkBuildingDir + 'ndk-build'
+    }
+    commandLine ndkBuildPath, '-j4', '-C', file('src/main').absolutePath
 }
 
 tasks.withType(JavaCompile) {
-	compileTask -> compileTask.dependsOn ndkBuild
+    compileTask -> compileTask.dependsOn ndkBuild
 }
