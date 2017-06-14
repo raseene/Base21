@@ -54,6 +54,7 @@ enum
 				height = _height;
 			}
 	void	create(const u8*);				// 作成
+	void	set_image(const u8*);
 	void	release(void);					// 削除
 	void	bind(void);						// 使用
 	void	load(const u8*);				// データ読み込み

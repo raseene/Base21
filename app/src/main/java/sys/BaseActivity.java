@@ -119,13 +119,6 @@ public class BaseActivity extends FragmentActivity implements Runnable
 		}
 	}
 
-	@Override
-	protected void	onStart()
-	{
-		super.onStart();
-		SoundManager.init();						// サウンド管理初期化
-	}
-
 	/**********
 	    終了
 	 **********/
@@ -143,13 +136,6 @@ public class BaseActivity extends FragmentActivity implements Runnable
 			quitNative();							// native部終了
 		}
 		super.onDestroy();
-	}
-
-	@Override
-	protected void	onStop()
-	{
-		super.onStop();
-		SoundManager.quit();						// サウンド管理終了
 	}
 
 	/**********

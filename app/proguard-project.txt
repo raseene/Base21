@@ -19,11 +19,6 @@
 #   public *;
 #}
 
--keep public class sys.SoundManager {
-	static public void	set_command(short, short, int, int, short, float);
-	static public void	stop_command();
-}
-
 -keep public class app.AppActivity {
 	static public void	open_dialog();
 }

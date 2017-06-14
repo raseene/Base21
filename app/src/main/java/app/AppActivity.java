@@ -27,6 +27,16 @@ public class AppActivity extends BaseActivity
 		app = this;
 	}
 
+	/**********
+	    終了
+	 **********/
+	@Override
+	protected void	onDestroy()
+	{
+		app = null;
+		super.onDestroy();
+	}
+
 
 	/**************
 	    終了確認

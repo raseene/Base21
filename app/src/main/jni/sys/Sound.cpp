@@ -625,54 +625,6 @@ void	SoundPlayer::update(void)
 }
 
 
-SoundPlayer*	SoundManager::player = NULL;			// プレイヤー
-
-/************************
-    サウンド管理初期化
- ************************/
-void	SoundManager::create(void)
-{
-	SoundPlayer::create_engine();						// サウンドエンジン初期化
-	player = new SoundPlayer[SOUND_CHANNEL_MAX];		// プレイヤー
-}
-
-/**********
-    終了
- **********/
-void	SoundManager::release(void)
-{
-	{				// コマンド停止
-		JNIEnv*		env;
-		Bool		attach_flag = FALSE;
-
-		if ( g_JavaVM->GetEnv((void**)&env, JNI_VERSION_1_6) < 0 ) {
-			if ( g_JavaVM->AttachCurrentThread(&env, NULL) < 0 ) {
-				goto error;
-			}
-			attach_flag = TRUE;
-		}
-
-		jclass	clazz = env->FindClass("sys/SoundManager");
-
-		if ( clazz ) {
-			jmethodID	mid = env->GetStaticMethodID(clazz, "stop_command", "()V");
-
-			if ( mid ) {
-				env->CallStaticVoidMethod(clazz, mid);
-			}
-		}
-		if ( attach_flag ) {
-			g_JavaVM->DetachCurrentThread();
-		}
-	}
-
-error :
-	if ( player ) {
-		delete[]	player;
-		player = NULL;
-	}
-	SoundPlayer::release_engine();						// サウンドエンジン終了
-}
 
 // サウンドコマンド
 enum
@@ -685,9 +637,179 @@ enum
 	COMMAND_NEXT,			// 連続再生設定
 	COMMAND_PAUSE,			// 一時停止
 	COMMAND_RESUME,			// 再開
-	COMMAND_PAUSE_SYS,		// システムによる一時停止
-	COMMAND_RESUME_SYS,		// システムによる再開
+	COMMAND_RELEASE,		// 終了
 };
+
+SoundPlayer*		SoundManager::player = NULL;			// プレイヤー
+pthread_t			SoundManager::thread;					// スレッド
+pthread_mutex_t		SoundManager::mutex;
+pthread_cond_t		SoundManager::cond;
+SoundCommand		SoundManager::queue[QUEUE_SIZE];		// コマンドキュー
+int volatile		SoundManager::reserve_pos;
+int volatile		SoundManager::run_pos;
+
+/************************
+    サウンド管理初期化
+ ************************/
+void	SoundManager::create(void)
+{
+	SoundPlayer::create_engine();						// サウンドエンジン初期化
+	player = new SoundPlayer[SOUND_CHANNEL_MAX];		// プレイヤー
+
+	reserve_pos	= 0;
+	run_pos		= 0;
+	pthread_mutex_init(&mutex, NULL);
+	pthread_cond_init(&cond, NULL);
+	start_thread();
+}
+
+void	SoundManager::start_thread(void)
+{
+	pthread_create(&thread, NULL, run, NULL);			// コマンド実行スレッド
+}
+
+/**********
+    終了
+ **********/
+void	SoundManager::release(void)
+{
+	stop_thread();
+	pthread_cond_destroy(&cond);
+	pthread_mutex_destroy(&mutex);
+
+	if ( player ) {
+		delete[]	player;
+		player = NULL;
+	}
+	SoundPlayer::release_engine();						// サウンドエンジン終了
+}
+void	SoundManager::stop_thread(void)
+{
+	set_command(-1, COMMAND_RELEASE);					// 終了コマンド
+	pthread_join(thread, NULL);
+}
+
+/*******************************************
+    コマンド予約
+		引数	_channel = チャンネル番号
+				_command = コマンド
+				_data    = データ
+				_size    = サイズ
+				_loop    = ループ回数
+				_volume  = 音量
+ *******************************************/
+void	SoundManager::set_command(int _channel, int _command, const void* _data, u32 _size, int _loop, float _volume)
+{
+	while ( (run_pos + 1) % QUEUE_SIZE == reserve_pos ) {
+		pthread_mutex_lock(&mutex);
+		pthread_cond_signal(&cond);
+		pthread_mutex_unlock(&mutex);
+	}
+
+	queue[run_pos].set(_channel, _command, _data, _size, _loop, _volume);
+	run_pos = ++run_pos % QUEUE_SIZE;
+	pthread_mutex_lock(&mutex);
+	pthread_cond_signal(&cond);
+	pthread_mutex_unlock(&mutex);
+}
+
+/**************************
+    コマンド実行スレッド
+ **************************/
+void*	SoundManager::run(void*)
+{
+	SoundCommand*	p;
+
+	while (TRUE) {
+		pthread_mutex_lock(&mutex);
+	    pthread_cond_wait(&cond, &mutex);
+		pthread_mutex_unlock(&mutex);
+
+		while ( reserve_pos != run_pos ) {
+			p = &queue[reserve_pos];
+			reserve_pos = ++reserve_pos % QUEUE_SIZE;
+
+			switch ( p->command ) {
+			  case COMMAND_UPDATE :
+				for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
+					player[i].update();
+				}
+				break;
+
+			  case COMMAND_PREPARE :
+				player[p->channel].prepare(p->data, p->size, p->loop, p->volume);
+				break;
+
+			  case COMMAND_PLAY :
+				if ( p->channel >= 0 ) {
+					if ( p->size ) {
+						player[p->channel].prepare(p->data, p->size, p->loop, p->volume);
+					}
+					player[p->channel].play();
+				}
+				else {
+					for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {			// 全て開始
+						player[i].play();
+					}
+				}
+				break;
+
+			  case COMMAND_STOP :
+				if ( p->channel >= 0 ) {
+					player[p->channel].stop((int)p->size);
+				}
+				else {
+					for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {			// 全て停止
+						player[i].stop();
+					}
+				}
+				break;
+
+			  case COMMAND_VOLUME :
+				if ( p->channel >= 0 ) {
+					player[p->channel].set_volume(p->volume);
+				}
+				else if ( SoundPlayer::set_master_volume(p->volume) ) {		// マスター音量設定
+					for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
+						player[i].set_volume();								// 音量再設定
+					}
+				}
+				break;
+
+			  case COMMAND_NEXT :
+				player[p->channel].set_next(p->data, p->size, p->loop);
+				break;
+
+			  case COMMAND_PAUSE :
+				if ( p->channel >= 0 ) {
+					player[p->channel].pause();
+				}
+				else {
+					for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {			// 全て一時停止
+						player[i].pause();
+					}
+				}
+				break;
+
+			  case COMMAND_RESUME :
+				if ( p->channel >= 0 ) {
+					player[p->channel].resume();
+				}
+				else {
+					for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {			// 全て再開
+						player[i].resume();
+					}
+				}
+				break;
+
+			  case COMMAND_RELEASE :
+				return	NULL;
+			}
+		}
+	}
+	return	NULL;
+}
+
 
 /**********
     稼働
@@ -799,11 +921,6 @@ void	SoundManager::pause(void)
 	set_command(-1, COMMAND_PAUSE);				// 全て一時停止
 }
 
-void	SoundManager::pause_system(void)		// システムによる一時停止
-{
-	set_command(-1, COMMAND_PAUSE_SYS);
-}
-
 /*********************************************
     再開
 		引数	_channel = チャンネル番号
@@ -820,150 +937,28 @@ void	SoundManager::resume(void)
 	set_command(-1, COMMAND_RESUME);			// 全て再開
 }
 
-void	SoundManager::resume_system(void)		// システムによる再開
+/**********************
+    システム一時停止
+ **********************/
+void	SoundManager::pause_system(void)
 {
-	set_command(-1, COMMAND_RESUME_SYS);
+	stop_thread();
+	for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
+		player[i].destroy();
+	}
+	SoundPlayer::release_engine();				// サウンドエンジン終了
 }
 
-
-/***********************************************
-    コマンドをJavaに送る
-			引数	_channel = チャンネル番号
-					_command = コマンド
-					_data    = データ
-					_size    = サイズ
-					_loop    = ループ回数
-					_volume  = 音量
- ***********************************************/
-void	SoundManager::set_command(int _channel, int _command, const void* _data, u32 _size, int _loop, float _volume)
+/******************
+    システム再開
+ ******************/
+void	SoundManager::resume_system(void)
 {
-	JNIEnv*		env;
-	Bool		attach_flag = FALSE;
-
-	if ( g_JavaVM->GetEnv((void**)&env, JNI_VERSION_1_6) < 0 ) {
-		if ( g_JavaVM->AttachCurrentThread(&env, NULL) < 0 ) {
-			return;
-		}
-		attach_flag = TRUE;
+	SoundPlayer::create_engine();				// サウンドエンジン初期化
+	for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
+		player[i].create();
 	}
-
-	jclass	clazz = env->FindClass("sys/SoundManager");
-
-	if ( clazz ) {
-		jmethodID	mid = env->GetStaticMethodID(clazz, "set_command", "(SSIISF)V");
-
-		if ( mid ) {
-			env->CallStaticVoidMethod(clazz, mid,	(short)_channel, (short)_command, (int)_data, (int)_size, (short)_loop, _volume);
-		}
-	}
-	if ( attach_flag ) {
-		g_JavaVM->DetachCurrentThread();
-	}
-}
-
-/********************************
-    Javaからコマンドを受け取る
- ********************************/
-extern "C"
-{
-JNIEXPORT void JNICALL	Java_sys_SoundManager_sendSoundCommand(JNIEnv*, jobject, jshort, jshort, jint, jint, jshort, jfloat);
-}
-
-JNIEXPORT void JNICALL	Java_sys_SoundManager_sendSoundCommand(JNIEnv*, jobject,
-								jshort _channel, jshort _command, jint _data, jint _size, jshort _loop, jfloat _volume)
-{
-	SoundManager::get_command((int)_channel, (int)_command, (void*)_data, (u32)_size, (int)_loop, (float)_volume);
-}
-
-void	SoundManager::get_command(int _channel, int _command, void* _data, u32 _size, int _loop, float _volume)
-{
-	switch ( _command ) {
-	  case COMMAND_UPDATE :
-		for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
-			player[i].update();
-		}
-		break;
-
-	  case COMMAND_PREPARE :
-		player[_channel].prepare(_data, _size, _loop, _volume);
-		break;
-
-	  case COMMAND_PLAY :
-		if ( _channel >= 0 ) {
-			if ( _size ) {
-				player[_channel].prepare(_data, _size, _loop, _volume);
-			}
-			player[_channel].play();
-		}
-		else {
-			for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {			// 全て開始
-				player[i].play();
-			}
-		}
-		break;
-
-	  case COMMAND_STOP :
-		if ( _channel >= 0 ) {
-			player[_channel].stop((int)_size);
-		}
-		else {
-			for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {			// 全て停止
-				player[i].stop();
-			}
-		}
-		break;
-
-	  case COMMAND_VOLUME :
-		if ( _channel >= 0 ) {
-			player[_channel].set_volume(_volume);
-		}
-		else if ( SoundPlayer::set_master_volume(_volume) ) {		// マスター音量設定
-			for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
-				player[i].set_volume();								// 音量再設定
-			}
-		}
-		break;
-
-	  case COMMAND_NEXT :
-		player[_channel].set_next(_data, _size, _loop);
-		break;
-
-	  case COMMAND_PAUSE :
-		if ( _channel >= 0 ) {
-			player[_channel].pause();
-		}
-		else {
-			for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {			// 全て一時停止
-				player[i].pause();
-			}
-		}
-		break;
-
-	  case COMMAND_RESUME :
-		if ( _channel >= 0 ) {
-			player[_channel].resume();
-		}
-		else if ( _size ) {
-			for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {			// 全て再開
-				player[i].resume();
-			}
-		}
-		break;
-
-	  case COMMAND_PAUSE_SYS :
-		for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
-			player[i].destroy();
-		}
-		SoundPlayer::release_engine();								// サウンドエンジン終了
-		break;
-
-	  case COMMAND_RESUME_SYS :
-		SoundPlayer::create_engine();								// サウンドエンジン初期化
-		for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
-			player[i].create();
-		}
-		break;
-	}
+	start_thread();
 }
 
 }
