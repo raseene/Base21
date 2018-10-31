@@ -10,7 +10,7 @@
 namespace sys
 {
 
-SLObjectItf		SoundPlayer::engineObject = NULL;		// エンジンオブジェクト
+SLObjectItf		SoundPlayer::engineObject;				// エンジンオブジェクト
 SLEngineItf		SoundPlayer::engineEngine;				// インタフェース
 float			SoundPlayer::master_volume;				// マスター音量
 
@@ -52,8 +52,7 @@ SoundPlayer::SoundPlayer(void)
 {
 	state = STOPPED;
 	sound_data = NULL;
-	pthread_mutex_init(&mutex, NULL);
-	create();
+	pcm_buffer = NULL;
 }
 
 void	SoundPlayer::create(void)
@@ -68,6 +67,7 @@ void	SoundPlayer::create(void)
 
 	pcm_buffer		= new char[PCM_BUF_SIZE];
 	bqPlayerObject	= NULL;
+	pthread_mutex_init(&mutex, NULL);
 
 	if ( sound_data ) {					// 再開
 		prepare();
@@ -86,25 +86,28 @@ SoundPlayer::~SoundPlayer()
 	if ( sound_data ) {
 		delete	sound_data;
 	}
-	pthread_mutex_destroy(&mutex);
 }
 
 void	SoundPlayer::destroy(void)
 {
-	pthread_mutex_lock(&mutex);
-	if ( bqPlayerObject ) {
-		(*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_STOPPED);
-		(*bqPlayerBufferQueue)->Clear(bqPlayerBufferQueue);
-		(*bqPlayerObject)->Destroy(bqPlayerObject);
-		bqPlayerObject = NULL;
+	if ( pcm_buffer ) {
+		pthread_mutex_lock(&mutex);
+		if ( bqPlayerObject ) {
+			(*bqPlayerPlay)->SetPlayState(bqPlayerPlay, SL_PLAYSTATE_STOPPED);
+			(*bqPlayerBufferQueue)->Clear(bqPlayerBufferQueue);
+			(*bqPlayerObject)->Destroy(bqPlayerObject);
+			bqPlayerObject = NULL;
+		}
+		pthread_mutex_unlock(&mutex);
+		pthread_mutex_destroy(&mutex);
+		if ( sound_data && (sound_data->format == SoundData::OGG) ) {
+			sound_data->position = ov_pcm_tell(&ov_file);
+			::ov_clear(&ov_file);
+		}
+		(*outputMixObject)->Destroy(outputMixObject);
+		delete[]	pcm_buffer;
+		pcm_buffer = NULL;
 	}
-	pthread_mutex_unlock(&mutex);
-	if ( sound_data && (sound_data->format == SoundData::OGG) ) {
-		sound_data->position = ov_pcm_tell(&ov_file);
-		::ov_clear(&ov_file);
-	}
-	(*outputMixObject)->Destroy(outputMixObject);
-	delete[]	pcm_buffer;
 }
 
 
@@ -653,18 +656,22 @@ int volatile		SoundManager::run_pos;
  ************************/
 void	SoundManager::create(void)
 {
-	SoundPlayer::create_engine();						// サウンドエンジン初期化
 	player = new SoundPlayer[SOUND_CHANNEL_MAX];		// プレイヤー
-
 	reserve_pos	= 0;
 	run_pos		= 0;
-	pthread_mutex_init(&mutex, NULL);
-	pthread_cond_init(&cond, NULL);
-	start_thread();
 }
 
-void	SoundManager::start_thread(void)
+/******************
+    システム再開
+ ******************/
+void	SoundManager::resume_system(void)
 {
+	SoundPlayer::create_engine();						// サウンドエンジン初期化
+	for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
+		player[i].create();
+	}
+	pthread_mutex_init(&mutex, NULL);
+	pthread_cond_init(&cond, NULL);
 	pthread_create(&thread, NULL, run, NULL);			// コマンド実行スレッド
 }
 
@@ -673,20 +680,25 @@ void	SoundManager::start_thread(void)
  **********/
 void	SoundManager::release(void)
 {
-	stop_thread();
-	pthread_cond_destroy(&cond);
-	pthread_mutex_destroy(&mutex);
-
 	if ( player ) {
 		delete[]	player;
 		player = NULL;
 	}
-	SoundPlayer::release_engine();						// サウンドエンジン終了
 }
-void	SoundManager::stop_thread(void)
+
+/**********************
+    システム一時停止
+ **********************/
+void	SoundManager::pause_system(void)
 {
 	set_command(-1, COMMAND_RELEASE);					// 終了コマンド
 	pthread_join(thread, NULL);
+	pthread_cond_destroy(&cond);
+	pthread_mutex_destroy(&mutex);
+	for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
+		player[i].destroy();
+	}
+	SoundPlayer::release_engine();						// サウンドエンジン終了
 }
 
 /*******************************************
@@ -935,30 +947,6 @@ void	SoundManager::resume(int _channel)
 void	SoundManager::resume(void)
 {
 	set_command(-1, COMMAND_RESUME);			// 全て再開
-}
-
-/**********************
-    システム一時停止
- **********************/
-void	SoundManager::pause_system(void)
-{
-	stop_thread();
-	for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
-		player[i].destroy();
-	}
-	SoundPlayer::release_engine();				// サウンドエンジン終了
-}
-
-/******************
-    システム再開
- ******************/
-void	SoundManager::resume_system(void)
-{
-	SoundPlayer::create_engine();				// サウンドエンジン初期化
-	for (int i = 0; i < SOUND_CHANNEL_MAX; i++) {
-		player[i].create();
-	}
-	start_thread();
 }
 
 }

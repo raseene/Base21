@@ -56,9 +56,6 @@ class Renderer
 	static GLfloat const*	current_texcoord;			// 設定中UV座標
 	static GLfloat const*	current_vertex;				// 設定中頂点座標
 
-	static u8*	prim_buffer;							// プリミティブ用汎用バッファ
-	static u32	prim_p;
-
 	static int	fade_bright;							// 画面の明るさ
 	static int	fade_speed;								// フェードの速さ
 
@@ -80,13 +77,12 @@ enum
 	static FrameBuffer*		frame_buffer;						// フレームバッファ
 	static ShaderProgram*	current_shader;						// 使用中シェーダ
 	static GLfloat const*	mat_projection;						// 透視変換行列
-	static Bool				draw_flag;							// 描画フラグ
 
 	static void		create(Bool);								// 初期化
 	static void		set_screen(int, int);						// 画面サイズ設定
 	static void		release(void);								// 終了
 	static void		update(Bool);								// 稼働（前処理）
-	static void		draw(void);									// 描画（後処理）
+	static void		draw(Bool);									// 描画（後処理）
 	static ShaderProgram*	use_shader(ShaderProgram*);			// シェーダ使用
 	static ShaderProgram*	use_shader(int _n)
 							{
@@ -123,11 +119,6 @@ enum
 						set_vertex(_vertex);
 						set_texcoord(_coord);
 						set_color(_color);
-					}
-	static void*	get_prim_buffer(u32);						// プリミティブバッファ取得
-	static Bool		is_active(void)								// 稼働中か
-					{
-						return	(Bool)prim_buffer;
 					}
 
 	static void		fade_in(int _cnt = FRAME_RATE/2)			// フェードイン

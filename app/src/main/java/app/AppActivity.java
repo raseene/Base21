@@ -33,8 +33,8 @@ public class AppActivity extends BaseActivity
 	@Override
 	protected void	onDestroy()
 	{
-		app = null;
 		super.onDestroy();
+		app = null;
 	}
 
 

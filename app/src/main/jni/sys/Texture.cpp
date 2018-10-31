@@ -61,9 +61,7 @@ void	Texture::set_image(const u8* data)
 void	Texture::release(void)
 {
 	if ( texture ) {
-		if ( Renderer::is_active() ) {
-			glDeleteTextures(1, &texture);
-		}
+		glDeleteTextures(1, &texture);
 		texture = 0;
 	}
 }
@@ -211,7 +209,7 @@ u32			TexCache::cache_mem_size;		// キャッシュ使用メモリサイズ
  **********************/
 void	TexCache::create(void)
 {
-	cache			= new TexCache *[TEX_CACHE_NUM];		// キャッシュ作成
+	cache			= (TEX_CACHE_NUM > 0) ? (new TexCache *[TEX_CACHE_NUM]) : NULL;			// キャッシュ作成
 	cache_num		= 0;
 	cache_mem_size	= 0;
 }
@@ -237,6 +235,8 @@ void	TexCache::release(void)
  ****************************************/
 Texture*	TexCache::get_texture(short _type, const void* _data)
 {
+	assert(cache);
+
 	int		i, j;
 
 	for (i = 0; i < cache_num; i++) {

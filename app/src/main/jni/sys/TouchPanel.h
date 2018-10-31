@@ -31,8 +31,6 @@ private :
 
 public :
 
-static const int	TOUCH_MAX = 5;						// マルチタッチ数
-
 enum
 {
 	TOUCH	= (1 << 0),			// タッチ

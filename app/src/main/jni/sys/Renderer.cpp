@@ -16,16 +16,13 @@ ShaderProgram*	Renderer::current_shader;				// 使用中シェーダ
 GLfloat const*	Renderer::mat_projection;				// 透視変換行列
 SRect			Renderer::screen_rect;					// 画面解像度
 SRect			Renderer::limit_rect;					// 表示画面解像度
-FrameBuffer*	Renderer::frame_buffer = NULL;			// フレームバッファ
+FrameBuffer*	Renderer::frame_buffer;					// フレームバッファ
 GLuint			Renderer::current_texture;				// 使用中テクスチャ
 GLubyte const*	Renderer::current_color;				// 設定中カラー
 GLfloat const*	Renderer::current_texcoord;				// 設定中UV座標
 GLfloat const*	Renderer::current_vertex;				// 設定中頂点座標
-u8*				Renderer::prim_buffer = NULL;			// プリミティブ用汎用バッファ
-u32				Renderer::prim_p;
 int				Renderer::fade_bright;					// 画面の明るさ
 int				Renderer::fade_speed;					// フェードの速さ
-Bool			Renderer::draw_flag;					// 描画フラグ
 
 
 /******************************************
@@ -36,9 +33,6 @@ void	Renderer::create(Bool init_flag)
 {
 	create_shader();												// シェーダ初期化
 	frame_buffer = new FrameBuffer(LIMIT_WIDTH, LIMIT_HEIGHT);		// フレームバッファ作成
-
-	prim_buffer = (PRIM_BUF_SIZE > 0) ? (u8*)memalign(4, PRIM_BUF_SIZE) : NULL;			// プリミティブ用汎用バッファ
-	prim_p = 0;
 
 	TexCache::create();												// テクスチャキャッシュ初期化
 
@@ -82,12 +76,12 @@ void	Renderer::create_shader(void)
 	{						// SHADER_PLAIN（テクスチャ無し）
 		static const
 		char	gVertexShader[] = 					// 頂点シェーダプログラム
-					"uniform mat3 projection;"
-					"attribute vec3 position;"
+					"uniform mat4 projection;"
+					"attribute vec4 position;"
 					"attribute vec4 color;"
 					"varying vec4 vColor;"
 					"void main() {"
-						"gl_Position = vec4(projection*position, 1.0);"
+						"gl_Position = projection*position;"
 						"vColor = color;"
 					"}";
 
@@ -105,14 +99,14 @@ void	Renderer::create_shader(void)
 	{						// SHADER_TEXTURE（テクスチャ有り）
 		static const
 		char	gVertexShader[] = 					// 頂点シェーダプログラム
-					"uniform mat3 projection;"
-					"attribute vec3 position;"
+					"uniform mat4 projection;"
+					"attribute vec4 position;"
 					"attribute vec4 color;"
 					"varying vec4 vColor;"
 					"attribute vec2 texcoord;"
 					"varying vec2 vTexcoord;"
 					"void main() {"
-						"gl_Position = vec4(projection*position, 1.0);"
+						"gl_Position = projection*position;"
 						"vColor = color;"
 						"vTexcoord = texcoord;"
 					"}";
@@ -133,11 +127,11 @@ void	Renderer::create_shader(void)
 	{						// SHADER_SIMPLE
 		static const
 		char	gVertexShader[] = 					// 頂点シェーダプログラム
-					"attribute vec3 position;"
+					"attribute vec4 position;"
 					"attribute vec2 texcoord;"
 					"varying vec2 vTexcoord;"
 					"void main() {"
-						"gl_Position = vec4(position, 1.0);"
+						"gl_Position = position;"
 						"vTexcoord = texcoord;"
 					"}";
 
@@ -246,10 +240,6 @@ GLuint	ShaderProgram::load_shader(GLenum type, const char* source)
  **********/
 void	Renderer::release(void)
 {
-	if ( prim_buffer ) {
-		free(prim_buffer);							// プリミティブ用汎用バッファ
-		prim_buffer = NULL;
-	}
 	if ( frame_buffer ) {
 		delete		frame_buffer;					// フレームバッファ削除
 		frame_buffer = NULL;
@@ -260,10 +250,10 @@ void	Renderer::release(void)
 
 void	ShaderProgram::release(void)
 {
-	if ( program && Renderer::is_active() ) {
+	if ( program ) {
 		glDeleteProgram(program);
+		program = 0;
 	}
-	program = 0;
 }
 
 
@@ -273,36 +263,30 @@ void	ShaderProgram::release(void)
  ************************************/
 void	Renderer::update(Bool _draw)
 {
-	draw_flag = _draw;					// 描画フラグ
-
-	current_shader		= NULL;
-	current_texture		= 0;
-	current_color		= NULL;
-	current_texcoord	= NULL;
-	current_vertex		= NULL;
 	frame_buffer->bind();				// フレームバッファ使用
-	Sprite::set_color();				// スプライト初期化
+	if ( _draw ) {
+		current_shader		= NULL;
+		current_texture		= 0;
+		current_color		= NULL;
+		current_texcoord	= NULL;
+		current_vertex		= NULL;
+		Sprite::set_color();			// スプライト初期化
 
-	glEnable(GL_BLEND);					// αブレンド初期化
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glDisable(GL_CULL_FACE);
-	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_SCISSOR_TEST);
-	glDisable(GL_STENCIL_TEST);
+		glEnable(GL_BLEND);				// αブレンド初期化
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDisable(GL_CULL_FACE);
+		glDisable(GL_DEPTH_TEST);
+		glDisable(GL_SCISSOR_TEST);
+		glDisable(GL_STENCIL_TEST);
+	}
 }
 
-/********************
+/************************************
     描画（後処理）
- ********************/
-void	Renderer::draw(void)
+		引数	_draw = 描画フラグ
+ ************************************/
+void	Renderer::draw(Bool _draw)
 {
-	glFlush();
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glDisable(GL_BLEND);
-
-
 	if ( fade_speed > 0 ) {				// フェードイン
 		fade_bright += fade_speed;
 		if ( fade_bright >= 255 ) {
@@ -318,7 +302,13 @@ void	Renderer::draw(void)
 		}
 	}
 
-	if ( draw_flag ) {
+	if ( _draw ) {
+		glFlush();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glDisable(GL_BLEND);
+
 		// フレームバッファテクスチャ描画
 		static const
 		GLfloat	_vertices[] =
@@ -367,7 +357,7 @@ void	ShaderProgram::use(const GLfloat* mat_projection)
 {
 	glUseProgram(program);
 	if ( (projection >= 0) && mat_projection ) {
-		glUniformMatrix3fv(projection, 1, GL_FALSE, mat_projection);
+		glUniformMatrix4fv(projection, 1, GL_FALSE, mat_projection);
 	}
 	if ( position >= 0 ) {
 		glEnableVertexAttribArray(position);
@@ -490,25 +480,6 @@ void	Renderer::set_vertex(void)
 				};
 
 	set_vertex(&_vertices[0][0]);
-}
-
-/****************************************
-    プリミティブバッファ取得
-			引数	_size = 使用サイズ
-			戻り値	バッファ
- ****************************************/
-void*	Renderer::get_prim_buffer(u32 _size)
-{
-	assert(prim_buffer);
-
-	if ( prim_p + _size > PRIM_BUF_SIZE ) {
-		prim_p = 0;
-	}
-
-	void*	_ret = (void*)(prim_buffer + prim_p);
-
-	prim_p += _size;
-	return	_ret;
 }
 
 }

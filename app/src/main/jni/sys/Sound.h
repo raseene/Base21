@@ -170,8 +170,6 @@ static const int	QUEUE_SIZE = SOUND_CHANNEL_MAX*4;
 	static SoundCommand		queue[QUEUE_SIZE];	// コマンドキュー
 	static int volatile		reserve_pos, run_pos;
 
-	static void		start_thread(void);			// スレッド開始
-	static void		stop_thread(void);			// スレッド停止
 	static void		set_command(int, int, const void* _dat = NULL, u32 _size = 0, int _loop = 0, float _volume = 0.0f);
 												// コマンド予約
 	static void*	run(void*);					// コマンド実行スレッド
@@ -180,6 +178,8 @@ public :
 
 	static void		create(void);				// 初期化
 	static void		release(void);				// 終了
+	static void		pause_system(void);			// システム一時停止
+	static void		resume_system(void);		// システム再開
 	static void		update(void);				// 稼働
 
 	static void		play(int, const void*, u32, int _loop = 1, float _vol = 1.0f);			// 再生
@@ -207,8 +207,6 @@ public :
 	static void		pause(void);				// 全て一時停止
 	static void		resume(int);				// 再開
 	static void		resume(void);				// 全て再開
-	static void		pause_system(void);			// システム一時停止
-	static void		resume_system(void);		// システム再開
 	static int		get_state(int _n)			// 状態取得
 					{
 						return	player[_n].get_state();

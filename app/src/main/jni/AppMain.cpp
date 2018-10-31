@@ -105,11 +105,12 @@ void	open_dialog(void)
 	}
 }
 
-/******************************
+/**************************************
     稼働
+		引数	_draw = 描画を行うか
 		戻り値	アプリ続行か
- ******************************/
-Bool	update_app(void)
+ **************************************/
+Bool	update_app(Bool _draw)
 {
 	switch ( phase ) {
 	  case PHASE_MAIN :				// メイン
@@ -142,11 +143,13 @@ Bool	update_app(void)
 	}
 
 
-	sprite[SPR_PHOTO].draw(0.0f, 0.0f);					// 背景
-	for (int i = 0; i < 4; i++) {						// ビー玉
-		int		t = ((cnt + i*15) % 60) - 30;
+	if ( _draw ) {
+		sprite[SPR_PHOTO].draw(0.0f, 0.0f);				// 背景
+		for (int i = 0; i < 4; i++) {					// ビー玉
+			int		t = ((cnt + i*15) % 60) - 30;
 
-		sprite[SPR_BALL_BLUE + i].draw(((i*180 + cnt*4) % 720) - 360, 400 - (30*30 - t*t)/2);
+			sprite[SPR_BALL_BLUE + i].draw(((i*180 + cnt*4) % 720) - 360, 400 - (30*30 - t*t)/2);
+		}
 	}
 
 	return	TRUE;

@@ -38,12 +38,17 @@ Bool	FrameBuffer::create(int _width, int _height)
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	for (int i = 0; i < 3*3; i++) {							// 透視変換行列初期化
-		mat_projection[i] = 0.0f;
+	int		i, j;
+
+	for (i = 0; i < 4; i++) {								// 透視変換行列初期化
+		for (j = 0; j < 4; j++) {
+			mat_projection[i][j] = 0.0f;
+		}
 	}
-	mat_projection[0] = 2.0f/width;
-	mat_projection[4] = 2.0f/height;
-	mat_projection[8] = 1.0f;
+	mat_projection[0][0] = 2.0f/width;
+	mat_projection[1][1] = 2.0f/height;
+	mat_projection[2][2] = 1.0f;
+	mat_projection[3][3] = 1.0f;
 	return	TRUE;
 }
 
@@ -53,17 +58,13 @@ Bool	FrameBuffer::create(int _width, int _height)
  ****************************/
 Bool	FrameBuffer::release(void)
 {
-	Bool	_result = FALSE;
-
 	if ( frame_buffer ) {
-		if ( Renderer::is_active() ) {
-			glDeleteFramebuffers(1, &frame_buffer);
-			_result = TRUE;
-		}
+		glDeleteFramebuffers(1, &frame_buffer);
 		frame_buffer = 0;
 		Texture::release();
+		return	TRUE;
 	}
-	return	_result;
+	return	FALSE;
 }
 
 /**********
@@ -78,9 +79,9 @@ void	FrameBuffer::bind(void)
 
 	glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer);
 	glViewport(0, 0, width, height);						// ビューポート設定
-	Renderer::mat_projection = mat_projection;				// 透視変換行列設定
+	Renderer::mat_projection = &mat_projection[0][0];		// 透視変換行列設定
 	if ( Renderer::current_shader ) {
-		glUniformMatrix3fv(Renderer::current_shader->projection, 1, GL_FALSE, mat_projection);
+		glUniformMatrix4fv(Renderer::current_shader->projection, 1, GL_FALSE, &mat_projection[0][0]);
 	}
 	glFlush();
 }

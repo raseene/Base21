@@ -48,25 +48,18 @@ public class BaseActivity extends FragmentActivity implements Runnable
 	public final static int		KEY_YES  = 2;					// ダイアログ用
 	public final static int		KEY_NO   = 3;
 
-	protected final static int	PHASE_RUN      = 0;				// 実行中
-	protected final static int	PHASE_INIT     = 1;				// 初期化
-	protected final static int	PHASE_CONTINUE = 2;				// 再開
-	protected final static int	PHASE_STOP     = 3;				// 中断
-	protected final static int	PHASE_FINISH   = 4;				// 終了
-
 
 	protected FrameLayout	base_layout;						// ベースレイアウト
 	protected BaseView		base_view;							// ビュー
-	protected int			phase;								// 実行段階
 	protected int			screen_width, screen_height;		// 画面の大きさ
-	protected final Object	sync_native = new Object();
 
 	private ScheduledExecutorService	executor;				// 定期実行管理
-	private ScheduledFuture<?>			future;
+	protected ScheduledFuture<?>		future = null;
 	private long			time0, time1;
 	protected int			frame_rate;							// フレームレート
 
-	private short[]			touch_status = new short[5*3];		// タッチパネル状態
+	private short[]			touch_status;						// タッチパネル状態
+	private int				touch_max;							// マルチタッチ数
 	protected int			key_status = 0;						// キー入力状態
 
 
@@ -94,7 +87,8 @@ public class BaseActivity extends FragmentActivity implements Runnable
 	protected void	onCreate2(Bundle _savedInstanceState, FrameLayout _base, int[] _attribs)
 	{
 		super.onCreate(_savedInstanceState);
-		phase = (_savedInstanceState == null) ? PHASE_INIT : PHASE_CONTINUE;
+		frame_rate = 0;
+		time0 = 0;
 
 		if ( _attribs == null ) {
 			_attribs = (new int[]
@@ -123,18 +117,9 @@ public class BaseActivity extends FragmentActivity implements Runnable
 	    終了
 	 **********/
 	@Override
-	public void		finish()
-	{
-		phase = PHASE_FINISH;
-		super.finish();
-	}
-
-	@Override
 	protected void	onDestroy()
 	{
-		if ( phase == PHASE_FINISH ) {
-			quitNative();							// native部終了
-		}
+		quitNative();								// native部終了
 		super.onDestroy();
 	}
 
@@ -149,9 +134,6 @@ public class BaseActivity extends FragmentActivity implements Runnable
 		executor = Executors.newSingleThreadScheduledExecutor();	// 描画スレッド管理
 
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);					// スリープ禁止
-		for (int i = 0; i < 5; i++) {				// タッチパネル状態クリア
-			touch_status[i*3] = 0;
-		}
 		if ( ((KeyguardManager)getSystemService(Context.KEYGUARD_SERVICE)).inKeyguardRestrictedInputMode() ) {
 			receiver = new UnLockReceiver();
 			registerReceiver(receiver, new IntentFilter(Intent.ACTION_USER_PRESENT));			// スクリーンロック解除待ち
@@ -180,41 +162,42 @@ public class BaseActivity extends FragmentActivity implements Runnable
 	@Override synchronized
 	protected void	onPause()
 	{
-		super.onPause();
-		if ( phase == PHASE_RUN ) {
-			phase = PHASE_STOP;
-		}
 		if ( future != null ) {						// 定期実行停止
 			future.cancel(false);
 			future = null;
 		}
-		try {
-			executor.submit(new Runnable()
-			{
-				@Override
-				public void		run()
-				{
-					base_view.quitGL();				// OpenGL終了
+		if ( executor != null ) {
+			if ( time0 > 0 ) {
+				try {
+					executor.submit(new Runnable()
+					{
+						@Override
+						public void		run()
+						{
+							pauseNative();			// native部一時停止
+							base_view.quitGL();		// OpenGL終了
+						}
+					}).get();
 				}
-			}).get();
+				catch (InterruptedException | ExecutionException e) {}
+			}
+			executor.shutdown();
+			executor = null;
 		}
-		catch (InterruptedException | ExecutionException e) {}
-		executor.shutdown();
-		executor = null;
-		if ( phase >= PHASE_STOP ) {
-			pauseNative();							// native部一時停止
-		}
+		time0 = 0;
+		touch_status = null;
 		if ( receiver != null ) {
 			unregisterReceiver(receiver);			// レシーバー登録を解除
 			receiver = null;
 		}
 		getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);		// スリープ禁止解除
+
+		super.onPause();
 	}
 
-	/********************************
+	/**********
 	    開始
-			戻り値	フレームレート
-	 ********************************/
+	 **********/
 	synchronized
 	public void		start()
 	{
@@ -229,11 +212,11 @@ public class BaseActivity extends FragmentActivity implements Runnable
 				public void		run()
 				{
 					android.os.Process.setThreadPriority(NATIVE_PRIORITY);
-					base_view.initGL()	;															// OpenGL初期化
-					synchronized (sync_native) {
-						frame_rate = initNative((phase == PHASE_INIT), getAssets());				// native部初期化
-					}
-					phase = PHASE_RUN;
+					base_view.initGL();												// OpenGL初期化
+					frame_rate = initNative((frame_rate == 0), getAssets());		// native部初期化
+					touch_max = frame_rate/0x100;			// マルチタッチ数
+					touch_status = (touch_max > 0) ? (new short[touch_max*3]) : null;
+					frame_rate &= 0xff;						// フレームレート
 
 					time0 = System.currentTimeMillis();
 					time1 = 0;
@@ -251,30 +234,26 @@ public class BaseActivity extends FragmentActivity implements Runnable
 	@Override
 	public void		run()
 	{
-		if ( phase == PHASE_RUN ) {
-			long	_t = System.currentTimeMillis();
-			int		_loop;
+		long	_t = System.currentTimeMillis();
+		int		_loop;
 
-			time1 += (_t - time0)*frame_rate;
-			if ( time1 > 4*1000 - 1 ) {
-				time1 = 4*1000 - 1;
-			}
-			time0 = _t;
-			_loop = (int)time1/1000;
-			if ( _loop > 0 ) {
-				time1 -= _loop*1000;
+		time1 += (_t - time0)*frame_rate;
+		if ( time1 > 4*1000 - 1 ) {
+			time1 = 4*1000 - 1;
+		}
+		time0 = _t;
+		_loop = (int)time1/1000;
+		if ( _loop > 0 ) {
+			time1 -= _loop*1000;
 
-				base_view.swap();
-				synchronized (sync_native) {
-					for (; (_loop > 0) && (phase == PHASE_RUN); _loop--) {
-						int		_key = key_status;
+			base_view.swap();
+			for (; (_loop > 0) && (future != null); _loop--) {
+				int		_key = key_status;
 
-						key_status = 0;
-						if ( !updateNative((_loop == 1), touch_status, _key) ) {	// native部稼働
-							finish();
-							break;
-						}
-					}
+				key_status = 0;
+				if ( !updateNative((_loop == 1), touch_status, _key) ) {	// native部稼働
+					finish();
+					break;
 				}
 			}
 		}
@@ -283,13 +262,12 @@ public class BaseActivity extends FragmentActivity implements Runnable
 	/********************
 	    画面サイズ設定
 	 ********************/
+	synchronized
 	public void		set_screen(int _width, int _height)
 	{
 		screen_width  = _width;
 		screen_height = _height;
-		synchronized (sync_native) {
-			setScreenNative(_width, _height);
-		}
+		setScreenNative(_width, _height);
 	}
 
 
@@ -298,32 +276,33 @@ public class BaseActivity extends FragmentActivity implements Runnable
 	 ********************/
 	public boolean	_onTouchEvent(final MotionEvent event)
 	{
-		if ( phase != PHASE_RUN ) {
+		if ( future == null ) {
 			return	false;
 		}
 
-		int		_action = event.getAction();
-		int		_index, _id;
+		int		_action = event.getAction(), _index, _id;
 
 		switch ( _action & MotionEvent.ACTION_MASK ) {
 		  case MotionEvent.ACTION_DOWN :
 		  case MotionEvent.ACTION_POINTER_DOWN :
 			_index	= (_action & MotionEvent.ACTION_POINTER_INDEX_MASK) >> MotionEvent.ACTION_POINTER_INDEX_SHIFT;
-			_id		= event.getPointerId(_index)*3;
-			if ( _id < 5*3 ) {
+			_id		= event.getPointerId(_index);
+			if ( _id < touch_max ) {
+				_id *= 3;
+				touch_status[_id + 0] = 1;								// タッチ中
 				touch_status[_id + 1] = (short)event.getX(_index);		// X座標
 				touch_status[_id + 2] = (short)event.getY(_index);		// Y座標
-				touch_status[_id + 0] = 1;								// タッチ中
 			}
 			break;
 
 		  case MotionEvent.ACTION_MOVE :
 			for (_index = 0; _index < event.getPointerCount(); _index++) {
-				_id = event.getPointerId(_index)*3;
-				if ( _id < 5*3 ) {
+				_id = event.getPointerId(_index);
+				if ( _id < touch_max ) {
+					_id *= 3;
+					touch_status[_id + 0] = 1;							// タッチ中
 					touch_status[_id + 1] = (short)event.getX(_index);	// X座標
 					touch_status[_id + 2] = (short)event.getY(_index);	// Y座標
-					touch_status[_id + 0] = 1;							// タッチ中
 				}
 			}
 			break;
@@ -331,8 +310,9 @@ public class BaseActivity extends FragmentActivity implements Runnable
 		  case MotionEvent.ACTION_UP :
 		  case MotionEvent.ACTION_POINTER_UP :
 			_index	= (_action & MotionEvent.ACTION_POINTER_INDEX_MASK) >> MotionEvent.ACTION_POINTER_INDEX_SHIFT;
-			_id		= event.getPointerId(_index)*3;
-			if ( _id < 5*3 ) {
+			_id		= event.getPointerId(_index);
+			if ( _id < touch_max ) {
+				_id *= 3;
 				touch_status[_id + 0] = 0;								// 非タッチ
 			}
 			break;
