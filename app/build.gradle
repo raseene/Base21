@@ -1,19 +1,21 @@
-apply plugin: 'com.android.application'
+plugins {
+    id 'com.android.application'
+}
 
 android {
-    compileSdkVersion 28
-    buildToolsVersion '28.0.3'
+    compileSdk 31
 
     defaultConfig {
         applicationId "com.example.base"
+        minSdk 21
+        targetSdk 31
         versionCode 1
-        versionName '1.0'
-        minSdkVersion 14
-        targetSdkVersion 28
+        versionName "1.0"
 
-        ndk {
-            moduleName "native"
-            abiFilters 'armeabi-v7a'
+        externalNativeBuild {
+            cmake {
+                cppFlags ''
+            }
         }
     }
 
@@ -28,37 +30,43 @@ android {
 
     buildTypes {
         debug {
+//            ndk {
+//                abiFilters 'armeabi-v7a'
+//            }
             applicationIdSuffix = '.debug'
             versionNameSuffix = 'd'
             debuggable true
-            jniDebuggable true
         }
         release {
-            minifyEnabled true
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-project.txt'
+//            minifyEnabled true
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             debuggable false
-            jniDebuggable false
             signingConfig signingConfigs.releaseKey
-
-            externalNativeBuild {
-                ndkBuild {
-                    cFlags '-Ofast'
-                }
-            }
         }
     }
-
-    dexOptions {
-        javaMaxHeapSize "2g"
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
-
     externalNativeBuild {
-        ndkBuild {
-            path file('src/main/jni/Android.mk')
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+            version '3.18.1'
         }
+    }
+    buildFeatures {
+        prefab true
+        viewBinding true
     }
 }
 
 dependencies {
-    implementation 'com.android.support:support-v4:25.3.1'
+    implementation 'androidx.appcompat:appcompat:1.4.1'
+
+    implementation "androidx.games:games-frame-pacing:1.9.1"
+    implementation "androidx.games:games-performance-tuner:1.5.0"
+    implementation "androidx.games:games-activity:1.1.0-rc01"
+//    implementation "androidx.games:games-controller:1.1.0-alpha01"
+//    implementation "androidx.games:games-text-input:1.1.0-beta01"
 }
